@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -55,7 +56,8 @@ type Client struct {
 	pendingResponses     map[uint32]*clientWorkItem
 	pendingResponsesLock sync.Mutex
 
-	reqID uint32
+	reqID                uint32
+	pendingRequestsCount uint32
 }
 
 var (
@@ -88,6 +90,13 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 		panic("requests with body streams aren't supported")
 	}
 
+	n := int(atomic.AddUint32(&c.pendingRequestsCount, 1))
+
+	if n >= c.maxPendingRequests() {
+		atomic.AddUint32(&c.pendingRequestsCount, ^uint32(0))
+		return c.getError(ErrPendingRequestsOverflow)
+	}
+
 	resp.Reset()
 
 	wi := acquireClientWorkItem()
@@ -95,6 +104,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 	wi.resp = resp
 	wi.deadline = deadline
 	if err := c.queueWorkItem(wi); err != nil {
+		atomic.AddUint32(&c.pendingRequestsCount, ^uint32(0))
 		releaseClientWorkItem(wi)
 		return c.getError(err)
 	}
@@ -106,13 +116,13 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 	err := <-wi.done
 
 	releaseClientWorkItem(wi)
+
+	atomic.AddUint32(&c.pendingRequestsCount, ^uint32(0))
+
 	return err
 }
 
 func (c *Client) queueWorkItem(wi *clientWorkItem) error {
-	if c.PendingRequests() > c.maxPendingRequests() {
-		return ErrPendingRequestsOverflow
-	}
 	select {
 	case c.pendingRequests <- wi:
 		return nil
@@ -208,15 +218,10 @@ func (c *Client) unblockStaleResponses() bool {
 
 // PendingRequests returns the number of pending requests at the moment.
 //
-// The function may return value higher than Client.MaxPendingRequests.
-//
 // This function may be used either for informational purposes
 // or for load balancing purposes.
 func (c *Client) PendingRequests() int {
-	c.pendingResponsesLock.Lock()
-	pendingResponsesCount := len(c.pendingResponses)
-	c.pendingResponsesLock.Unlock()
-	return len(c.pendingRequests) + pendingResponsesCount
+	return int(atomic.LoadUint32(&c.pendingRequestsCount))
 }
 
 func (c *Client) worker() {
