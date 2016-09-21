@@ -54,7 +54,7 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duratio
 		Handler: func(ctx *fasthttp.RequestCtx) {
 			ctx.SetBodyString(expectedBody)
 		},
-		Concurrency:   parallelism * runtime.NumCPU() * 2,
+		Concurrency:   parallelism * runtime.NumCPU(),
 		MaxBatchDelay: batchDelay,
 	}
 	serverStop, ln := newTestServerExt(s)

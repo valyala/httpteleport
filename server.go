@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -49,13 +50,9 @@ type Server struct {
 	// Standard logger from log package is used by default.
 	Logger Logger
 
-	once          sync.Once
-	concurrencyCh chan struct{}
 	workItemPool  sync.Pool
-}
 
-func (s *Server) init() {
-	s.concurrencyCh = make(chan struct{}, s.concurrency())
+	concurrencyCount uint32
 }
 
 func (s *Server) concurrency() int {
@@ -79,8 +76,6 @@ func (s *Server) ListenAndServe(addr string) error {
 
 // Serve serves httpteleport requests accepted from the given listener.
 func (s *Server) Serve(ln net.Listener) error {
-	s.once.Do(s.init)
-
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -157,9 +152,10 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			return fmt.Errorf("cannot read request: %s", err)
 		}
 
-		select {
-		case s.concurrencyCh <- struct{}{}:
-		default:
+		n := int(atomic.AddUint32(&s.concurrencyCount, 1))
+		if n > concurrency {
+			atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
+
 			fmt.Fprintf(&wi.ctx, "concurrency limit exceeded: %d. Increase Server.Concurrency or decrease load on the server", concurrency)
 			wi.ctx.SetStatusCode(fasthttp.StatusTooManyRequests)
 
@@ -189,7 +185,7 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 				}
 			}
 
-			<-s.concurrencyCh
+			atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
 		}()
 	}
 }
