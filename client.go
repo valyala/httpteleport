@@ -325,7 +325,9 @@ func (c *Client) connWriter(bw *bufio.Writer, stopCh <-chan struct{}) error {
 		c.pendingResponsesLock.Lock()
 		if _, ok := c.pendingResponses[reqID]; ok {
 			c.pendingResponsesLock.Unlock()
-			return fmt.Errorf("request ID overflow. id=%d", reqID)
+			err := fmt.Errorf("request ID overflow. id=%d", reqID)
+			wi.done <- c.getError(err)
+			return err
 		}
 		c.pendingResponses[reqID] = wi
 		c.pendingResponsesLock.Unlock()
