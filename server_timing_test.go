@@ -8,33 +8,54 @@ import (
 	"time"
 )
 
-func BenchmarkEndToEndGet1(b *testing.B) {
-	benchmarkEndToEndGet(b, 1)
+func BenchmarkEndToEndGetNoDelay1(b *testing.B) {
+	benchmarkEndToEndGet(b, 1, 0)
 }
 
-func BenchmarkEndToEndGet10(b *testing.B) {
-	benchmarkEndToEndGet(b, 10)
+func BenchmarkEndToEndGetNoDelay10(b *testing.B) {
+	benchmarkEndToEndGet(b, 10, 0)
 }
 
-func BenchmarkEndToEndGet100(b *testing.B) {
-	benchmarkEndToEndGet(b, 100)
+func BenchmarkEndToEndGetNoDelay100(b *testing.B) {
+	benchmarkEndToEndGet(b, 100, 0)
 }
 
-func BenchmarkEndToEndGet1000(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000)
+func BenchmarkEndToEndGetNoDelay1000(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 0)
 }
 
-func BenchmarkEndToEndGet10K(b *testing.B) {
-	benchmarkEndToEndGet(b, 10000)
+func BenchmarkEndToEndGetNoDelay10K(b *testing.B) {
+	benchmarkEndToEndGet(b, 10000, 0)
 }
 
-func benchmarkEndToEndGet(b *testing.B, parallelism int) {
+func BenchmarkEndToEndGetDelay1ms(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond)
+}
+
+func BenchmarkEndToEndGetDelay2ms(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond)
+}
+
+func BenchmarkEndToEndGetDelay4ms(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond)
+}
+
+func BenchmarkEndToEndGetDelay8ms(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond)
+}
+
+func BenchmarkEndToEndGetDelay16ms(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond)
+}
+
+func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration) {
 	expectedBody := "Hello world"
 	s := &Server{
 		Handler: func(ctx *fasthttp.RequestCtx) {
 			ctx.SetBodyString(expectedBody)
 		},
-		Concurrency: parallelism * runtime.NumCPU() * 2,
+		Concurrency:   parallelism * runtime.NumCPU() * 2,
+		MaxBatchDelay: batchDelay,
 	}
 	serverStop, ln := newTestServerExt(s)
 
@@ -42,6 +63,7 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int) {
 	for i := 0; i < runtime.NumCPU(); i++ {
 		c := newTestClient(ln)
 		c.MaxPendingRequests = s.Concurrency
+		c.MaxBatchDelay = batchDelay
 		cc = append(cc, c)
 	}
 	var clientIdx uint32
