@@ -49,13 +49,17 @@ func BenchmarkEndToEndGetDelay16ms(b *testing.B) {
 }
 
 func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration) {
+	var serverBatchDelay time.Duration
+	if batchDelay > 0 {
+		serverBatchDelay = 100 * time.Microsecond
+	}
 	expectedBody := "Hello world"
 	s := &Server{
 		Handler: func(ctx *fasthttp.RequestCtx) {
 			ctx.SetBodyString(expectedBody)
 		},
 		Concurrency:   parallelism * runtime.NumCPU(),
-		MaxBatchDelay: batchDelay,
+		MaxBatchDelay: serverBatchDelay,
 	}
 	serverStop, ln := newTestServerExt(s)
 
