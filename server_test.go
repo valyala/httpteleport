@@ -139,6 +139,38 @@ func TestServerBatchDelayRequestResponseConcurrent(t *testing.T) {
 	}
 }
 
+func TestServerReduceMemoryUsageSerial(t *testing.T) {
+	s := &Server{
+		Handler:           testGetHandler,
+		ReduceMemoryUsage: true,
+	}
+	serverStop, c := newTestServerClientExt(s)
+
+	if err := testGet(c); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerReduceMemoryUsageConcurrent(t *testing.T) {
+	s := &Server{
+		Handler:           testGetHandler,
+		ReduceMemoryUsage: true,
+	}
+	serverStop, c := newTestServerClientExt(s)
+
+	if err := testServerClientConcurrent(func() error { return testGet(c) }); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
 func TestServerConcurrencyLimit(t *testing.T) {
 	const concurrency = 10
 	doneCh := make(chan struct{})

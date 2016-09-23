@@ -35,6 +35,12 @@ type Server struct {
 	// DefaultMaxBatchDelay is used by default.
 	MaxBatchDelay time.Duration
 
+	// ReduceMemoryUsage leads to reduced memory usage at the cost
+	// of higher CPU usage if set to true.
+	//
+	// Memory usage reduction is disabled by default.
+	ReduceMemoryUsage bool
+
 	// ReadBufferSize is the size for read buffer.
 	//
 	// DefaultReadBufferSize is used by default.
@@ -50,7 +56,7 @@ type Server struct {
 	// Standard logger from log package is used by default.
 	Logger Logger
 
-	workItemPool  sync.Pool
+	workItemPool sync.Pool
 
 	concurrencyCount uint32
 }
@@ -140,13 +146,14 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 	}
 	logger := s.logger()
 	concurrency := s.concurrency()
+	reduceMemoryUsage := s.ReduceMemoryUsage
 	for {
 		wi := s.acquireWorkItem()
 		if _, err := io.ReadFull(br, wi.reqID[:]); err != nil {
 			return fmt.Errorf("cannot read request ID: %s", err)
 		}
 
-		wi.ctx.Init2(conn, logger)
+		wi.ctx.Init2(conn, logger, reduceMemoryUsage)
 
 		if err := wi.ctx.Request.Read(br); err != nil {
 			return fmt.Errorf("cannot read request: %s", err)
@@ -176,6 +183,11 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			if wi.ctx.IsBodyStream() {
 				panic("chunked responses aren't supported")
 			}
+
+			// Request is no longer needed, so reset it in order
+			// to free up resources occupied by the request.
+			wi.ctx.Request.Reset()
+
 			select {
 			case pendingResponses <- wi:
 			default:
@@ -227,6 +239,10 @@ func (s *Server) connWriter(bw *bufio.Writer, pendingResponses <-chan *serverWor
 		if err := wi.ctx.Response.Write(bw); err != nil {
 			return fmt.Errorf("cannot write response: %s", err)
 		}
+
+		// Response is no longer needed, so reset it in order to release
+		// resources occupied by the response.
+		wi.ctx.Response.Reset()
 
 		s.releaseWorkItem(wi)
 
