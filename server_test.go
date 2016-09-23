@@ -1,6 +1,7 @@
 package httpteleport
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"github.com/valyala/fasthttp"
@@ -10,6 +11,81 @@ import (
 	"testing"
 	"time"
 )
+
+func TestServerBrokenClientCloseConn(t *testing.T) {
+	testServerBrokenClient(t, func(conn net.Conn) error {
+		if err := conn.Close(); err != nil {
+			return fmt.Errorf("cannot close server connection: %s", err)
+		}
+		return nil
+	})
+}
+
+func TestServerBrokenClientGarbageRequest(t *testing.T) {
+	testServerBrokenClient(t, func(conn net.Conn) error {
+		_, err := conn.Write([]byte("garbage\nrequest"))
+		if err != nil {
+			return fmt.Errorf("cannot send garbage to the server: %s", err)
+		}
+		return nil
+	})
+}
+
+func TestServerBrokenClientSendRequestAndCloseConn(t *testing.T) {
+	testServerBrokenClient(t, func(conn net.Conn) error {
+		var reqID [4]byte
+		if _, err := conn.Write(reqID[:]); err != nil {
+			return fmt.Errorf("cannot send reqID to the server: %s", err)
+		}
+
+		var req fasthttp.Request
+		req.SetRequestURI("http://foo.bar/abc")
+		bw := bufio.NewWriter(conn)
+		if err := req.Write(bw); err != nil {
+			return fmt.Errorf("cannot send request to the server: %s", err)
+		}
+
+		if err := conn.Close(); err != nil {
+			return fmt.Errorf("cannot close server connection: %s", err)
+		}
+		return nil
+	})
+}
+
+type nilLogger struct{}
+
+func (nl *nilLogger) Printf(fmt string, args ...interface{}) {}
+
+func testServerBrokenClient(t *testing.T, clientConnFunc func(net.Conn) error) {
+	s := &Server{
+		Handler: testGetHandler,
+		Logger:  &nilLogger{},
+	}
+	serverStop, ln := newTestServerExt(s)
+
+	clientStopCh := make(chan error, 1)
+	go func() {
+		conn, err := ln.Dial()
+		if err != nil {
+			clientStopCh <- err
+			return
+		}
+		clientStopCh <- clientConnFunc(conn)
+	}()
+
+	select {
+	case err := <-clientStopCh:
+		if err != nil {
+			t.Fatalf("client error: %s", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("timeout")
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
 
 func TestServerTimeoutSerial(t *testing.T) {
 	stopCh := make(chan struct{})
