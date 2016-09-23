@@ -15,7 +15,7 @@ var (
 	maxServerConns = flag.Int("maxServerConns", 1000, "The maximum number of open connections to each upstream "+
 		"HTTP server listed in serverAddr")
 
-	batchDelay  = flag.Duration("batchDelay", time.Millisecond, "How long to wait before flushing responses back to httptc")
+	batchDelay  = flag.Duration("batchDelay", 0, "How long to wait before flushing responses back to httptc")
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests the server may handle")
 	listenAddr  = flag.String("listenAddr", ":8043", "TCP address to listen to for httptc connections")
 	serverAddr  = flag.String("serverAddr", "127.0.0.1:8044", "Comma-separated list of upstream HTTP server TCP addresses "+

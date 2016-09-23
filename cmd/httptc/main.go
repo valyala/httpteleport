@@ -15,7 +15,7 @@ var (
 	serverConns = flag.Int("serverConns", 1, "The number of concurrent connections to httpts. "+
 		"Usually a single connection is enough. Increase serverConns if httptc consumes more than 100% of a single CPU core")
 
-	batchDelay  = flag.Duration("batchDelay", time.Millisecond, "How long to wait before flushing incoming requests to httpts")
+	batchDelay  = flag.Duration("batchDelay", 0, "How long to wait before flushing incoming requests to httpts")
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent incoming connections the client may handle")
 	listenAddr  = flag.String("listenAddr", ":8042", "TCP address to listen to for incoming HTTP requests")
 	serverAddr  = flag.String("serverAddr", "127.0.0.1:8043", "TCP address of httpts server to route incoming requests to")
