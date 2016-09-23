@@ -53,6 +53,10 @@ func main() {
 var c httpteleport.Client
 
 func requestHandler(ctx *fasthttp.RequestCtx) {
+	var buf [16]byte
+	ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
+	ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
+
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
 	if err == nil {
 		return
