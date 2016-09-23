@@ -11,7 +11,9 @@ import (
 )
 
 var (
-	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on listenAddr")
+	reusePort   = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on listenAddr")
+	serverConns = flag.Int("serverConns", 1, "The number of concurrent connections to httpts. "+
+		"Usually a single connection is enough. Increase serverConns if httptc consumes more than 100% of a single CPU core")
 
 	batchDelay  = flag.Duration("batchDelay", time.Millisecond, "How long to wait before flushing incoming requests to httpts")
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent incoming connections the client may handle")
@@ -23,10 +25,13 @@ var (
 func main() {
 	flag.Parse()
 
-	c = httpteleport.Client{
-		Addr:               *serverAddr,
-		MaxBatchDelay:      *batchDelay,
-		MaxPendingRequests: *concurrency,
+	for i := 0; i < *serverConns; i++ {
+		c := &httpteleport.Client{
+			Addr:               *serverAddr,
+			MaxBatchDelay:      *batchDelay,
+			MaxPendingRequests: *concurrency,
+		}
+		cs = append(cs, c)
 	}
 
 	cfg := tcplisten.Config{
@@ -50,13 +55,14 @@ func main() {
 	}
 }
 
-var c httpteleport.Client
+var cs []*httpteleport.Client
 
 func requestHandler(ctx *fasthttp.RequestCtx) {
 	var buf [16]byte
 	ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
 	ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
 
+	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
 	if err == nil {
 		return
@@ -69,4 +75,23 @@ func requestHandler(ctx *fasthttp.RequestCtx) {
 	} else {
 		ctx.SetStatusCode(fasthttp.StatusBadGateway)
 	}
+}
+
+func leastLoadedClient() *httpteleport.Client {
+	minC := cs[0]
+	minN := minC.PendingRequests()
+	if minN == 0 {
+		return minC
+	}
+	for _, c := range cs[1:] {
+		n := c.PendingRequests()
+		if n == 0 {
+			return c
+		}
+		if n < minN {
+			minC = c
+			minN = n
+		}
+	}
+	return minC
 }
