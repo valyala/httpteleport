@@ -8,21 +8,22 @@ import (
 	"github.com/valyala/tcplisten"
 	"log"
 	"net"
+	"os"
 	"strings"
 	"time"
 )
 
 var (
-	reusePort   = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or httptp")
+	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or httptp")
 
-	in  = flag.String("in", ":8080", "-inType addresses to listen to for incoming requests")
+	in     = flag.String("in", ":8080", "-inType addresses to listen to for incoming requests")
 	inType = flag.String("inType", "http", "Type of -in address. Possible values:\n"+
 		"\thttp - listen for HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
 		"\tunix - listen for HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
 		"\thttptp - listen for httptp connections over TCP, e.g. -in=127.0.0.1:8043")
 	inDelay = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=httptp")
 
-	out  = flag.String("out", "127.0.0.1:8043", "Comma-separated list of -outType addresses to forward requests to.\n"+
+	out = flag.String("out", "127.0.0.1:8043", "Comma-separated list of -outType addresses to forward requests to.\n"+
 		"Each request is forwarded to the least loaded address")
 	outType = flag.String("outType", "httptp", "Type of -out address. Possible values:\n"+
 		"\thttp - forward requests to HTTP servers on TCP, e.g. -out=127.0.0.1:80\n"+
@@ -31,7 +32,7 @@ var (
 	outDelay = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
 
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process")
-	timeout = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting response from -out server")
+	timeout     = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting response from -out server")
 )
 
 func main() {
@@ -77,8 +78,9 @@ func initHTTPClients(outs []string) {
 func initUnixClients(outs []string) {
 	connsPerAddr := *concurrency / len(outs)
 	for _, addr := range outs {
+		verifyUnixAddr(addr)
 		c := &fasthttp.HostClient{
-			Addr:     addr,
+			Addr: addr,
 			Dial: func(addr string) (net.Conn, error) {
 				return net.Dial("unix", addr)
 			},
@@ -87,6 +89,17 @@ func initUnixClients(outs []string) {
 		upstreamClients = append(upstreamClients, c)
 	}
 	log.Printf("Forwarding requests to HTTP servers at unix:%q", outs)
+}
+
+func verifyUnixAddr(addr string) {
+	fi, err := os.Stat(addr)
+	if err != nil {
+		log.Fatalf("error when accessing unix:%q: %s", addr, err)
+	}
+	mode := fi.Mode()
+	if (mode & os.ModeSocket) == 0 {
+		log.Fatalf("the %q must be unix socket", addr)
+	}
 }
 
 func initHTTPTPClients(outs []string) {
@@ -112,13 +125,21 @@ func serveHTTP() {
 }
 
 func serveUnix() {
-	ln, err := net.Listen("unix", *in)
+	addr := *in
+	if _, err := os.Stat(addr); err == nil {
+		verifyUnixAddr(addr)
+		if err := os.Remove(addr); err != nil {
+			log.Fatalf("cannot remove %q: %s", addr, err)
+		}
+	}
+
+	ln, err := net.Listen("unix", addr)
 	if err != nil {
-		log.Fatalf("cannot listen to -in=%q: %s", *in, err)
+		log.Fatalf("cannot listen to -in=%q: %s", addr, err)
 	}
 	s := newHTTPServer()
 
-	log.Printf("listening for HTTP requests on unix:%q", *in)
+	log.Printf("listening for HTTP requests on unix:%q", addr)
 	if err := s.Serve(ln); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
@@ -152,8 +173,8 @@ func newTCPListener() net.Listener {
 
 func newHTTPServer() *fasthttp.Server {
 	return &fasthttp.Server{
-		Handler:     httpRequestHandler,
-		Concurrency: *concurrency,
+		Handler:           httpRequestHandler,
+		Concurrency:       *concurrency,
 		ReduceMemoryUsage: true,
 	}
 }
@@ -166,9 +187,9 @@ type client interface {
 var upstreamClients []client
 
 func httpRequestHandler(ctx *fasthttp.RequestCtx) {
-        var buf [16]byte
-        ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
-        ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
+	var buf [16]byte
+	ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
+	ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
 
 	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
