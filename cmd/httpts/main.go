@@ -12,9 +12,6 @@ import (
 )
 
 var (
-	maxServerConns = flag.Int("maxServerConns", 1000, "The maximum number of open connections to each upstream "+
-		"HTTP server listed in serverAddr")
-
 	batchDelay  = flag.Duration("batchDelay", 0, "How long to wait before flushing responses back to httptc")
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests the server may handle")
 	listenAddr  = flag.String("listenAddr", ":8043", "TCP address to listen to for httptc connections")
@@ -27,10 +24,12 @@ var (
 func main() {
 	flag.Parse()
 
-	for _, addr := range strings.Split(*serverAddr, ",") {
+	serverAddrs := strings.Split(*serverAddr, ",")
+	connsPerAddr := *concurrency / len(serverAddrs)
+	for _, addr := range serverAddrs {
 		c := &fasthttp.HostClient{
 			Addr:     addr,
-			MaxConns: *maxServerConns,
+			MaxConns: connsPerAddr,
 		}
 		cs = append(cs, c)
 	}
@@ -42,9 +41,9 @@ func main() {
 	}
 
 	s := httpteleport.Server{
-		Handler:       requestHandler,
-		Concurrency:   *concurrency,
-		MaxBatchDelay: *batchDelay,
+		Handler:           requestHandler,
+		Concurrency:       *concurrency,
+		MaxBatchDelay:     *batchDelay,
 		ReduceMemoryUsage: true,
 	}
 
