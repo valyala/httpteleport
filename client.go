@@ -79,6 +79,8 @@ func (c *Client) DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeo
 	return c.DoDeadline(req, resp, deadline)
 }
 
+var errNoBodyStream = errors.New("requests with body streams aren't supported")
+
 // DoDeadline teleports the given request to the server set in Client.Addr.
 //
 // ErrTimeout is returned if the server didn't return response until
@@ -87,7 +89,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 	c.once.Do(c.init)
 
 	if req.IsBodyStream() {
-		panic("requests with body streams aren't supported")
+		return errNoBodyStream
 	}
 
 	n := int(atomic.AddUint32(&c.pendingRequestsCount, 1))
