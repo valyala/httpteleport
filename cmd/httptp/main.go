@@ -66,10 +66,7 @@ func main() {
 func initHTTPClients(outs []string) {
 	connsPerAddr := *concurrency / len(outs)
 	for _, addr := range outs {
-		c := &fasthttp.HostClient{
-			Addr:     addr,
-			MaxConns: connsPerAddr,
-		}
+		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr)
 		upstreamClients = append(upstreamClients, c)
 	}
 	log.Printf("Forwarding requests to HTTP servers at %q", outs)
@@ -79,13 +76,7 @@ func initUnixClients(outs []string) {
 	connsPerAddr := *concurrency / len(outs)
 	for _, addr := range outs {
 		verifyUnixAddr(addr)
-		c := &fasthttp.HostClient{
-			Addr: addr,
-			Dial: func(addr string) (net.Conn, error) {
-				return net.Dial("unix", addr)
-			},
-			MaxConns: connsPerAddr,
-		}
+		c := newHTTPClient(dialUnix, addr, connsPerAddr)
 		upstreamClients = append(upstreamClients, c)
 	}
 	log.Printf("Forwarding requests to HTTP servers at unix:%q", outs)
@@ -112,6 +103,20 @@ func initHTTPTPClients(outs []string) {
 		upstreamClients = append(upstreamClients, c)
 	}
 	log.Printf("Forwarding requests to httptp servers at %q", outs)
+}
+
+func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int) client {
+	return &fasthttp.HostClient{
+		Addr:         addr,
+		Dial:         dial,
+		MaxConns:     connsPerAddr,
+		ReadTimeout:  *timeout * 5,
+		WriteTimeout: *timeout,
+	}
+}
+
+func dialUnix(addr string) (net.Conn, error) {
+	return net.Dial("unix", addr)
 }
 
 func serveHTTP() {
