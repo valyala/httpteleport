@@ -157,6 +157,8 @@ func serveHTTPTP() {
 		Concurrency:       *concurrency,
 		MaxBatchDelay:     *inDelay,
 		ReduceMemoryUsage: true,
+		ReadTimeout:       120 * time.Second,
+		WriteTimeout:      5 * time.Second,
 	}
 
 	log.Printf("listening for httptp connections on %q", *in)

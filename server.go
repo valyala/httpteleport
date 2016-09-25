@@ -35,6 +35,18 @@ type Server struct {
 	// DefaultMaxBatchDelay is used by default.
 	MaxBatchDelay time.Duration
 
+	// Maximum duration for reading the full request (including body).
+	//
+	// This also limits the maximum lifetime for idle connections.
+	//
+	// By default request read timeout is unlimited.
+	ReadTimeout time.Duration
+
+	// Maximum duration for writing the full response (including body).
+	//
+	// By default response write timeout is unlimited.
+	WriteTimeout time.Duration
+
 	// ReduceMemoryUsage leads to reduced memory usage at the cost
 	// of higher CPU usage if set to true.
 	//
@@ -122,7 +134,7 @@ func (s *Server) serveConn(conn net.Conn) error {
 
 	writerDone := make(chan error, 1)
 	go func() {
-		writerDone <- s.connWriter(bw, pendingResponses, stopCh)
+		writerDone <- s.connWriter(bw, conn, pendingResponses, stopCh)
 	}()
 
 	var err error
@@ -147,8 +159,24 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 	logger := s.logger()
 	concurrency := s.concurrency()
 	reduceMemoryUsage := s.ReduceMemoryUsage
+	readTimeout := s.ReadTimeout
+	var lastReadDeadline time.Time
 	for {
 		wi := s.acquireWorkItem()
+
+		if readTimeout > 0 {
+			// Optimization: update read deadline only if more than 25%
+			// of the last read deadline exceeded.
+			// See https://github.com/golang/go/issues/15133 for details.
+			t := time.Now()
+			if t.Sub(lastReadDeadline) > (readTimeout >> 2) {
+				if err := conn.SetReadDeadline(t.Add(readTimeout)); err != nil {
+					return fmt.Errorf("cannot update read deadline: %s", err)
+				}
+				lastReadDeadline = t
+			}
+		}
+
 		if _, err := io.ReadFull(br, wi.reqID[:]); err != nil {
 			return fmt.Errorf("cannot read request ID: %s", err)
 		}
@@ -202,7 +230,7 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 	}
 }
 
-func (s *Server) connWriter(bw *bufio.Writer, pendingResponses <-chan *serverWorkItem, stopCh <-chan struct{}) error {
+func (s *Server) connWriter(bw *bufio.Writer, conn net.Conn, pendingResponses <-chan *serverWorkItem, stopCh <-chan struct{}) error {
 	var wi *serverWorkItem
 
 	var (
@@ -216,6 +244,8 @@ func (s *Server) connWriter(bw *bufio.Writer, pendingResponses <-chan *serverWor
 		maxBatchDelay = 0
 	}
 
+	writeTimeout := s.WriteTimeout
+	var lastWriteDeadline time.Time
 	for {
 		select {
 		case wi = <-pendingResponses:
@@ -230,6 +260,19 @@ func (s *Server) connWriter(bw *bufio.Writer, pendingResponses <-chan *serverWor
 				}
 				flushCh = nil
 				continue
+			}
+		}
+
+		if writeTimeout > 0 {
+			// Optimization: update write deadline only if more than 25%
+			// of the last write deadline exceeded.
+			// See https://github.com/golang/go/issues/15133 for details.
+			t := time.Now()
+			if t.Sub(lastWriteDeadline) > (writeTimeout >> 2) {
+				if err := conn.SetReadDeadline(t.Add(writeTimeout)); err != nil {
+					return fmt.Errorf("cannot update write deadline: %s", err)
+				}
+				lastWriteDeadline = t
 			}
 		}
 
