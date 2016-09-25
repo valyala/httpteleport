@@ -4,5 +4,11 @@ The project isn't ready for production use yet.
 
 Use cases:
 
-- Bandwidth reduction between RTB servers.
-- Bandwidth reduction between reverse proxy and worker nodes.
+- RTB servers.
+- API servers.
+- Reverse proxies.
+- Load balancing.
+
+
+[Docs](https://godoc.org/github.com/valyala/httpteleport)
+[httptp](https://github.com/valyala/httpteleport/cmd/httptp)
