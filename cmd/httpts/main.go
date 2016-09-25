@@ -45,6 +45,7 @@ func main() {
 		Handler:       requestHandler,
 		Concurrency:   *concurrency,
 		MaxBatchDelay: *batchDelay,
+		ReduceMemoryUsage: true,
 	}
 
 	log.Printf("listening for httptc connections on %q", *listenAddr)
