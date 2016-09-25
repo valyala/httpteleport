@@ -181,6 +181,8 @@ func newHTTPServer() *fasthttp.Server {
 		Handler:           httpRequestHandler,
 		Concurrency:       *concurrency,
 		ReduceMemoryUsage: true,
+		ReadTimeout:       120 * time.Second,
+		WriteTimeout:      5 * time.Second,
 	}
 }
 
