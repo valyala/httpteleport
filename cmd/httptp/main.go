@@ -48,7 +48,7 @@ func main() {
 	case "httptp":
 		initHTTPTPClients(outs)
 	default:
-		log.Fatalf("unknown -outType=%q. Supported values are: http, unix, httptp")
+		log.Fatalf("unknown -outType=%q. Supported values are: http, unix, httptp", *outType)
 	}
 
 	switch *inType {
@@ -59,7 +59,7 @@ func main() {
 	case "httptp":
 		serveHTTPTP()
 	default:
-		log.Fatalf("unknown -inType=%q. Supported values are: http, unix and httptp")
+		log.Fatalf("unknown -inType=%q. Supported values are: http, unix and httptp", *inType)
 	}
 }
 
