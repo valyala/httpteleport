@@ -218,6 +218,10 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 }
 
 func httptpRequestHandler(ctx *fasthttp.RequestCtx) {
+	// Reset 'Connection: close' request header in order to prevent
+	// from closing keep-alive connections to -out servers.
+	ctx.Request.Header.ResetConnectionClose()
+
 	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
 	if err == nil {
