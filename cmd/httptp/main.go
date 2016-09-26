@@ -17,22 +17,34 @@ var (
 	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or httptp")
 
 	in     = flag.String("in", ":8080", "-inType addresses to listen to for incoming requests")
-	inType = flag.String("inType", "http", "Type of -in address. Possible values:\n"+
+	inType = flag.String("inType", "http", "Type of -in address. Supported values:\n"+
 		"\thttp - listen for HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
 		"\tunix - listen for HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
 		"\thttptp - listen for httptp connections over TCP, e.g. -in=127.0.0.1:8043")
-	inDelay = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=httptp")
+	inDelay    = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=httptp")
+	inCompress = flag.String("inCompress", "flate", "Which compression to use for responses if -inType=httptp. "+
+		"Supported values:\n"+
+		"\tnone - responses aren't compressed. Low CPU usage at the cost of high network bandwidth\n"+
+		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
+		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
 	out = flag.String("out", "127.0.0.1:8043", "Comma-separated list of -outType addresses to forward requests to.\n"+
 		"Each request is forwarded to the least loaded address")
-	outType = flag.String("outType", "httptp", "Type of -out address. Possible values:\n"+
+	outType = flag.String("outType", "httptp", "Type of -out address. Supported values:\n"+
 		"\thttp - forward requests to HTTP servers on TCP, e.g. -out=127.0.0.1:80\n"+
 		"\tunix - forward requests to HTTP servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
 		"\thttptp - forward requests to httptp servers over TCP, e.g. -out=127.0.0.1:8043")
-	outDelay        = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
+	outDelay    = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
+	outCompress = flag.String("outCompress", "flate", "Which compression to use for requests if -outType=httptp. "+
+		"Supported values:\n"+
+		"\tnone - requests aren't compressed. Low CPU usage at the cost of high network bandwidth\n"+
+		"\tflate - requests are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
+		"\tsnappy - requests are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
+
 	outConnsPerAddr = flag.Int("outConnsPerAddr", 1, "How many connections must be established per each -out server if -outType=httptp.\n"+
 		"\tUsually a single connection is enough. Increase this value if the compression\n"+
-		"\ton the connection occupies 100% of a single CPU core")
+		"\ton the connection occupies 100% of a single CPU core.\n"+
+		"\tAlternatively, -inCompress and/or -outCompress may be set to snappy or none in order to reduce CPU load")
 
 	concurrency   = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process")
 	timeout       = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
@@ -100,6 +112,7 @@ func verifyUnixAddr(addr string) {
 func initHTTPTPClients(outs []string) {
 	concurrencyPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	concurrencyPerAddr = (concurrencyPerAddr + *outConnsPerAddr - 1) / *outConnsPerAddr
+	outCompressType := compressType(*outCompress, "outCompress")
 	var cs []client
 	for _, addr := range outs {
 		c := &httpteleport.Client{
@@ -108,6 +121,7 @@ func initHTTPTPClients(outs []string) {
 			MaxPendingRequests: concurrencyPerAddr,
 			ReadTimeout:        120 * time.Second,
 			WriteTimeout:       5 * time.Second,
+			CompressType:       outCompressType,
 		}
 		cs = append(cs, c)
 	}
@@ -115,6 +129,20 @@ func initHTTPTPClients(outs []string) {
 		upstreamClients = append(upstreamClients, cs...)
 	}
 	log.Printf("Forwarding requests to httptp servers at %q", outs)
+}
+
+func compressType(ct, name string) httpteleport.CompressType {
+	switch ct {
+	case "none":
+		return httpteleport.CompressNone
+	case "flate":
+		return httpteleport.CompressFlate
+	case "snappy":
+		return httpteleport.CompressSnappy
+	default:
+		log.Fatalf("unknown -%s: %q. Supported values: none, flate, snappy", name, ct)
+	}
+	panic("unreached")
 }
 
 func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int) client {
@@ -164,6 +192,7 @@ func serveUnix() {
 
 func serveHTTPTP() {
 	ln := newTCPListener()
+	inCompressType := compressType(*inCompress, "inCompress")
 	s := httpteleport.Server{
 		Handler:           httptpRequestHandler,
 		Concurrency:       *concurrency,
@@ -171,6 +200,7 @@ func serveHTTPTP() {
 		ReduceMemoryUsage: true,
 		ReadTimeout:       120 * time.Second,
 		WriteTimeout:      5 * time.Second,
+		CompressType:      inCompressType,
 	}
 
 	log.Printf("listening for httptp connections on %q", *in)

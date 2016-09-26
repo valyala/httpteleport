@@ -9,57 +9,73 @@ import (
 )
 
 func BenchmarkEndToEndGetNoDelay1(b *testing.B) {
-	benchmarkEndToEndGet(b, 1, 0)
+	benchmarkEndToEndGet(b, 1, 0, CompressNone)
 }
 
 func BenchmarkEndToEndGetNoDelay10(b *testing.B) {
-	benchmarkEndToEndGet(b, 10, 0)
+	benchmarkEndToEndGet(b, 10, 0, CompressNone)
 }
 
 func BenchmarkEndToEndGetNoDelay100(b *testing.B) {
-	benchmarkEndToEndGet(b, 100, 0)
+	benchmarkEndToEndGet(b, 100, 0, CompressNone)
 }
 
 func BenchmarkEndToEndGetNoDelay1000(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 0)
+	benchmarkEndToEndGet(b, 1000, 0, CompressNone)
 }
 
 func BenchmarkEndToEndGetNoDelay10K(b *testing.B) {
-	benchmarkEndToEndGet(b, 10000, 0)
+	benchmarkEndToEndGet(b, 10000, 0, CompressNone)
 }
 
 func BenchmarkEndToEndGetDelay1ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone)
 }
 
 func BenchmarkEndToEndGetDelay2ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond)
+	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond, CompressNone)
 }
 
 func BenchmarkEndToEndGetDelay4ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond)
+	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond, CompressNone)
 }
 
 func BenchmarkEndToEndGetDelay8ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond)
+	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond, CompressNone)
 }
 
 func BenchmarkEndToEndGetDelay16ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond)
+	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond, CompressNone)
 }
 
-func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration) {
+func BenchmarkEndToEndGetCompressNone(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone)
+}
+
+func BenchmarkEndToEndGetCompressFlate(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate)
+}
+
+func BenchmarkEndToEndGetCompressSnappy(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy)
+}
+
+func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration, compressType CompressType) {
 	var serverBatchDelay time.Duration
 	if batchDelay > 0 {
 		serverBatchDelay = 100 * time.Microsecond
 	}
-	expectedBody := "Hello world"
+	expectedBody := "Hello world foobar baz aaa bbb ccc ddd eee gklj kljsdfsdf" +
+		"sdfasdaf asdf asdf dsa fasd fdasf afsgfdsg ertytrshdsf fds gf" +
+		"dfagsf asglsdkflaskdflkqowqiot asdkljlp 0293 4u09u0sd9fulksj lksfj lksdfj sdf" +
+		"sfjkko9u iodjsf-[9j lksdjf;lkasdj02r fsd fhjas;klfj asd;lfjwjfsd; "
 	s := &Server{
 		Handler: func(ctx *fasthttp.RequestCtx) {
 			ctx.SetBodyString(expectedBody)
 		},
 		Concurrency:   parallelism * runtime.NumCPU(),
 		MaxBatchDelay: serverBatchDelay,
+		CompressType:  compressType,
 	}
 	serverStop, ln := newTestServerExt(s)
 
@@ -68,12 +84,14 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duratio
 		c := newTestClient(ln)
 		c.MaxPendingRequests = s.Concurrency
 		c.MaxBatchDelay = batchDelay
+		c.CompressType = compressType
 		cc = append(cc, c)
 	}
 	var clientIdx uint32
 
 	deadline := time.Now().Add(time.Hour)
 	b.SetParallelism(parallelism)
+	b.SetBytes(int64(len(expectedBody)))
 	b.RunParallel(func(pb *testing.PB) {
 		n := atomic.AddUint32(&clientIdx, 1)
 		c := cc[int(n)%len(cc)]

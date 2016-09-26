@@ -166,6 +166,7 @@ func testClientBrokenServer(t *testing.T, serverConnFunc func(net.Conn) error) {
 		Dial: func(addr string) (net.Conn, error) {
 			return ln.Dial()
 		},
+		CompressType: CompressNone,
 	}
 
 	serverStopCh := make(chan error, 1)
@@ -173,6 +174,15 @@ func testClientBrokenServer(t *testing.T, serverConnFunc func(net.Conn) error) {
 		conn, err := ln.Accept()
 		if err != nil {
 			serverStopCh <- err
+			return
+		}
+		readCompressType, err := handshakeServer(conn, CompressNone)
+		if err != nil {
+			serverStopCh <- err
+			return
+		}
+		if readCompressType != CompressNone {
+			serverStopCh <- fmt.Errorf("unexpected read CompressType: %v. Expecting %v", readCompressType, CompressNone)
 			return
 		}
 		serverStopCh <- serverConnFunc(conn)

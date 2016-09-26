@@ -17,6 +17,11 @@ type Client struct {
 	// Addr is the httpteleport Server address to connect to.
 	Addr string
 
+	// CompressType is the compression type used for requests.
+	//
+	// CompressFlate is used by default.
+	CompressType CompressType
+
 	// Dial is a custom function used for connecting to the Server.
 	//
 	// fasthttp.Dial is used by default.
@@ -259,7 +264,11 @@ func (c *Client) worker() {
 }
 
 func (c *Client) serveConn(conn net.Conn) error {
-	br, bw := newBufioConn(conn, c.ReadBufferSize, c.WriteBufferSize)
+	br, bw, err := newBufioConn(conn, c.ReadBufferSize, c.WriteBufferSize, c.CompressType, false)
+	if err != nil {
+		conn.Close()
+		return err
+	}
 
 	readerDone := make(chan error, 1)
 	go func() {
@@ -272,7 +281,6 @@ func (c *Client) serveConn(conn net.Conn) error {
 		writerDone <- c.connWriter(bw, conn, stopWriterCh)
 	}()
 
-	var err error
 	select {
 	case err = <-readerDone:
 		close(stopWriterCh)

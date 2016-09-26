@@ -20,6 +20,11 @@ type Server struct {
 	// Handler must process incoming http requests.
 	Handler fasthttp.RequestHandler
 
+	// CompressType is the compression type used for responses.
+	//
+	// CompressFlate is used by default.
+	CompressType CompressType
+
 	// Concurrency is the maximum number of concurrent goroutines
 	// with Server.Handler the server may run.
 	//
@@ -125,7 +130,12 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) serveConn(conn net.Conn) error {
-	br, bw := newBufioConn(conn, s.ReadBufferSize, s.WriteBufferSize)
+	br, bw, err := newBufioConn(conn, s.ReadBufferSize, s.WriteBufferSize, s.CompressType, true)
+	if err != nil {
+		conn.Close()
+		return err
+	}
+
 	stopCh := make(chan struct{})
 
 	pendingResponses := make(chan *serverWorkItem, s.concurrency())
@@ -139,7 +149,6 @@ func (s *Server) serveConn(conn net.Conn) error {
 		writerDone <- s.connWriter(bw, conn, pendingResponses, stopCh)
 	}()
 
-	var err error
 	select {
 	case err = <-readerDone:
 		conn.Close()
