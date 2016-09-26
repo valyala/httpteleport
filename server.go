@@ -116,8 +116,10 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 
 		go func() {
-			err := s.serveConn(conn)
-			s.logger().Printf("httpteleport.Server: error on connection %q<->%q: %s", conn.LocalAddr(), conn.RemoteAddr(), err)
+			if err := s.serveConn(conn); err != nil {
+				s.logger().Printf("httpteleport.Server: error on connection %q<->%q: %s",
+					conn.LocalAddr(), conn.RemoteAddr(), err)
+			}
 		}()
 	}
 }
@@ -177,7 +179,12 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			}
 		}
 
-		if _, err := io.ReadFull(br, wi.reqID[:]); err != nil {
+		if n, err := io.ReadFull(br, wi.reqID[:]); err != nil {
+			if n == 0 {
+				// Ignore error if no bytes are read, since
+				// the client may just close the connection.
+				return nil
+			}
 			return fmt.Errorf("cannot read request ID: %s", err)
 		}
 
