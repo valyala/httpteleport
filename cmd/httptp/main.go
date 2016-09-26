@@ -16,7 +16,7 @@ import (
 var (
 	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or httptp")
 
-	in     = flag.String("in", ":8080", "-inType addresses to listen to for incoming requests")
+	in     = flag.String("in", ":8080", "-inType address to listen to for incoming requests")
 	inType = flag.String("inType", "http", "Type of -in address. Supported values:\n"+
 		"\thttp - listen for HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
 		"\tunix - listen for HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
