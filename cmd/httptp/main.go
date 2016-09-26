@@ -99,6 +99,8 @@ func initHTTPTPClients(outs []string) {
 			Addr:               addr,
 			MaxBatchDelay:      *outDelay,
 			MaxPendingRequests: *concurrency,
+			ReadTimeout:        120 * time.Second,
+			WriteTimeout:       5 * time.Second,
 		}
 		upstreamClients = append(upstreamClients, c)
 	}

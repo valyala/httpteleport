@@ -36,6 +36,18 @@ type Client struct {
 	// By default requests are sent immediately to the server.
 	MaxBatchDelay time.Duration
 
+	// Maximum duration for full response reading (including body).
+	//
+	// This also limits idle connection lifetime duration.
+	//
+	// By default response read timeout is unlimited.
+	ReadTimeout time.Duration
+
+	// Maximum duration for full request writing (including body).
+	//
+	// By default request write timeout is unlimited.
+	WriteTimeout time.Duration
+
 	// ReadBufferSize is the size for read buffer.
 	//
 	// DefaultReadBufferSize is used by default.
@@ -239,8 +251,9 @@ func (c *Client) worker() {
 			continue
 		}
 		c.setLastError(err)
-		err = c.serveConn(conn)
-		err = fmt.Errorf("error on connection %q<->%q: %s", conn.LocalAddr(), conn.RemoteAddr(), err)
+		if err = c.serveConn(conn); err != nil {
+			err = fmt.Errorf("error on connection %q<->%q: %s", conn.LocalAddr(), conn.RemoteAddr(), err)
+		}
 		c.setLastError(err)
 	}
 }
@@ -250,13 +263,13 @@ func (c *Client) serveConn(conn net.Conn) error {
 
 	readerDone := make(chan error, 1)
 	go func() {
-		readerDone <- c.connReader(br)
+		readerDone <- c.connReader(br, conn)
 	}()
 
 	writerDone := make(chan error, 1)
 	stopWriterCh := make(chan struct{})
 	go func() {
-		writerDone <- c.connWriter(bw, stopWriterCh)
+		writerDone <- c.connWriter(bw, conn, stopWriterCh)
 	}()
 
 	var err error
@@ -273,7 +286,7 @@ func (c *Client) serveConn(conn net.Conn) error {
 	return err
 }
 
-func (c *Client) connWriter(bw *bufio.Writer, stopCh <-chan struct{}) error {
+func (c *Client) connWriter(bw *bufio.Writer, conn net.Conn, stopCh <-chan struct{}) error {
 	var (
 		wi  *clientWorkItem
 		buf [4]byte
@@ -290,6 +303,8 @@ func (c *Client) connWriter(bw *bufio.Writer, stopCh <-chan struct{}) error {
 		maxBatchDelay = 0
 	}
 
+	writeTimeout := c.WriteTimeout
+	var lastWriteDeadline time.Time
 	for {
 		select {
 		case wi = <-c.pendingRequests:
@@ -316,6 +331,19 @@ func (c *Client) connWriter(bw *bufio.Writer, stopCh <-chan struct{}) error {
 
 		reqID := c.reqID
 		c.reqID++
+
+		if writeTimeout > 0 {
+			// Optimization: update write deadline only if more than 25%
+			// of the last write deadline exceeded.
+			// See https://github.com/golang/go/issues/15133 for details.
+			t := time.Now()
+			if t.Sub(lastWriteDeadline) > (writeTimeout >> 2) {
+				if err := conn.SetReadDeadline(t.Add(writeTimeout)); err != nil {
+					return fmt.Errorf("cannot update write deadline: %s", err)
+				}
+				lastWriteDeadline = t
+			}
+		}
 
 		b := appendUint32(buf[:0], reqID)
 		if _, err := bw.Write(b); err != nil {
@@ -357,14 +385,33 @@ func (c *Client) connWriter(bw *bufio.Writer, stopCh <-chan struct{}) error {
 	}
 }
 
-func (c *Client) connReader(br *bufio.Reader) error {
+func (c *Client) connReader(br *bufio.Reader, conn net.Conn) error {
 	var (
 		buf      [4]byte
 		resp     *fasthttp.Response
 		zeroResp fasthttp.Response
 	)
+
+	readTimeout := c.ReadTimeout
+	var lastReadDeadline time.Time
 	for {
+		if readTimeout > 0 {
+			// Optimization: update read deadline only if more than 25%
+			// of the last read deadline exceeded.
+			// See https://github.com/golang/go/issues/15133 for details.
+			t := time.Now()
+			if t.Sub(lastReadDeadline) > (readTimeout >> 2) {
+				if err := conn.SetReadDeadline(t.Add(readTimeout)); err != nil {
+					return fmt.Errorf("cannot update read deadline: %s", err)
+				}
+				lastReadDeadline = t
+			}
+		}
+
 		if _, err := io.ReadFull(br, buf[:]); err != nil {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				return nil
+			}
 			return fmt.Errorf("cannot read response ID: %s", err)
 		}
 
