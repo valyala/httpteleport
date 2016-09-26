@@ -29,7 +29,10 @@ var (
 		"\thttp - forward requests to HTTP servers on TCP, e.g. -out=127.0.0.1:80\n"+
 		"\tunix - forward requests to HTTP servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
 		"\thttptp - forward requests to httptp servers over TCP, e.g. -out=127.0.0.1:8043")
-	outDelay = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
+	outDelay        = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
+	outConnsPerAddr = flag.Int("outConnsPerAddr", 1, "How many connections must be established per each -out server if -outType=httptp.\n"+
+		"\tUsually a single connection is enough. Increase this value if the compression\n"+
+		"\ton the connection occupies 100% of a single CPU core")
 
 	concurrency   = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process")
 	timeout       = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
@@ -65,7 +68,7 @@ func main() {
 }
 
 func initHTTPClients(outs []string) {
-	connsPerAddr := *concurrency / len(outs)
+	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	for _, addr := range outs {
 		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr)
 		upstreamClients = append(upstreamClients, c)
@@ -74,7 +77,7 @@ func initHTTPClients(outs []string) {
 }
 
 func initUnixClients(outs []string) {
-	connsPerAddr := *concurrency / len(outs)
+	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	for _, addr := range outs {
 		verifyUnixAddr(addr)
 		c := newHTTPClient(dialUnix, addr, connsPerAddr)
@@ -95,15 +98,21 @@ func verifyUnixAddr(addr string) {
 }
 
 func initHTTPTPClients(outs []string) {
+	concurrencyPerAddr := (*concurrency + len(outs) - 1) / len(outs)
+	concurrencyPerAddr = (concurrencyPerAddr + *outConnsPerAddr - 1) / *outConnsPerAddr
+	var cs []client
 	for _, addr := range outs {
 		c := &httpteleport.Client{
 			Addr:               addr,
 			MaxBatchDelay:      *outDelay,
-			MaxPendingRequests: *concurrency,
+			MaxPendingRequests: concurrencyPerAddr,
 			ReadTimeout:        120 * time.Second,
 			WriteTimeout:       5 * time.Second,
 		}
-		upstreamClients = append(upstreamClients, c)
+		cs = append(cs, c)
+	}
+	for i := 0; i < *outConnsPerAddr; i++ {
+		upstreamClients = append(upstreamClients, cs...)
 	}
 	log.Printf("Forwarding requests to httptp servers at %q", outs)
 }
