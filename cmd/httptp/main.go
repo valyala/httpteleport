@@ -1,6 +1,7 @@
 package main
 
 import (
+	"expvar"
 	"flag"
 	"fmt"
 	"github.com/valyala/fasthttp"
@@ -54,6 +55,8 @@ var (
 func main() {
 	flag.Parse()
 
+	initExpvarServer()
+
 	outs := strings.Split(*out, ",")
 
 	switch *outType {
@@ -85,7 +88,7 @@ func initHTTPClients(outs []string) {
 		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr)
 		upstreamClients = append(upstreamClients, c)
 	}
-	log.Printf("Forwarding requests to HTTP servers at %q", outs)
+	log.Printf("forwarding requests to HTTP servers at %q", outs)
 }
 
 func initUnixClients(outs []string) {
@@ -95,7 +98,7 @@ func initUnixClients(outs []string) {
 		c := newHTTPClient(dialUnix, addr, connsPerAddr)
 		upstreamClients = append(upstreamClients, c)
 	}
-	log.Printf("Forwarding requests to HTTP servers at unix:%q", outs)
+	log.Printf("forwarding requests to HTTP servers at unix:%q", outs)
 }
 
 func verifyUnixAddr(addr string) {
@@ -128,7 +131,7 @@ func initHTTPTPClients(outs []string) {
 	for i := 0; i < *outConnsPerAddr; i++ {
 		upstreamClients = append(upstreamClients, cs...)
 	}
-	log.Printf("Forwarding requests to httptp servers at %q", outs)
+	log.Printf("forwarding requests to httptp servers at %q", outs)
 }
 
 func compressType(ct, name string) httpteleport.CompressType {
@@ -230,7 +233,16 @@ func newHTTPServer() *fasthttp.Server {
 	}
 }
 
+var (
+	inRequestStart        = expvar.NewInt("inRequestStart")
+	inRequestSuccess      = expvar.NewInt("inRequestSuccess")
+	inRequestNon200       = expvar.NewInt("inRequestNon200")
+	inRequestTimeoutError = expvar.NewInt("inRequestTimeoutError")
+	inRequestOtherError   = expvar.NewInt("inRequestOtherError")
+)
+
 func httpRequestHandler(ctx *fasthttp.RequestCtx) {
+	inRequestStart.Add(1)
 	if *xForwardedFor {
 		var buf [16]byte
 		ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
@@ -240,19 +252,26 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
 	if err == nil {
+		inRequestSuccess.Add(1)
+		if ctx.Response.StatusCode() != fasthttp.StatusOK {
+			inRequestNon200.Add(1)
+		}
 		return
 	}
 
 	ctx.ResetBody()
 	fmt.Fprintf(ctx, "HTTP proxying error: %s", err)
 	if err == fasthttp.ErrTimeout {
+		inRequestTimeoutError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusGatewayTimeout)
 	} else {
+		inRequestOtherError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusBadGateway)
 	}
 }
 
 func httptpRequestHandler(ctx *fasthttp.RequestCtx) {
+	inRequestStart.Add(1)
 	// Reset 'Connection: close' request header in order to prevent
 	// from closing keep-alive connections to -out servers.
 	ctx.Request.Header.ResetConnectionClose()
@@ -260,14 +279,20 @@ func httptpRequestHandler(ctx *fasthttp.RequestCtx) {
 	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
 	if err == nil {
+		inRequestSuccess.Add(1)
+		if ctx.Response.StatusCode() != fasthttp.StatusOK {
+			inRequestNon200.Add(1)
+		}
 		return
 	}
 
 	ctx.ResetBody()
 	fmt.Fprintf(ctx, "httptp proxying error: %s", err)
 	if err == httpteleport.ErrTimeout {
+		inRequestTimeoutError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusGatewayTimeout)
 	} else {
+		inRequestOtherError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusBadGateway)
 	}
 }
