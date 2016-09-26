@@ -31,8 +31,9 @@ var (
 		"\thttptp - forward requests to httptp servers over TCP, e.g. -out=127.0.0.1:8043")
 	outDelay = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
 
-	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process")
-	timeout     = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting response from -out server")
+	concurrency   = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process")
+	timeout       = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
+	xForwardedFor = flag.Bool("xForwardedFor", false, "Whether to set client's ip in X-Forwarded-For request header for outgoing requests")
 )
 
 func main() {
@@ -190,17 +191,12 @@ func newHTTPServer() *fasthttp.Server {
 	}
 }
 
-type client interface {
-	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
-	PendingRequests() int
-}
-
-var upstreamClients []client
-
 func httpRequestHandler(ctx *fasthttp.RequestCtx) {
-	var buf [16]byte
-	ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
-	ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
+	if *xForwardedFor {
+		var buf [16]byte
+		ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
+		ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
+	}
 
 	c := leastLoadedClient()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
@@ -236,6 +232,13 @@ func httptpRequestHandler(ctx *fasthttp.RequestCtx) {
 		ctx.SetStatusCode(fasthttp.StatusBadGateway)
 	}
 }
+
+type client interface {
+	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
+	PendingRequests() int
+}
+
+var upstreamClients []client
 
 func leastLoadedClient() client {
 	minC := upstreamClients[0]
