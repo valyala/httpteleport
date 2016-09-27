@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"crypto/tls"
 	"expvar"
 	"flag"
 	"fmt"
@@ -17,27 +19,33 @@ import (
 var (
 	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or httptp")
 
-	in     = flag.String("in", ":8080", "-inType address to listen to for incoming requests")
+	in     = flag.String("in", "127.0.0.1:8080", "-inType address to listen to for incoming requests")
 	inType = flag.String("inType", "http", "Type of -in address. Supported values:\n"+
-		"\thttp - listen for HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
-		"\tunix - listen for HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
-		"\thttptp - listen for httptp connections over TCP, e.g. -in=127.0.0.1:8043")
+		"\thttp - accept HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
+		"\thttps - accept HTTPS requests over TCP, e.g. -in=127.0.0.1:443\n"+
+		"\tunix - accept HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
+		"\thttptp - accept httptp connections over TCP, e.g. -in=127.0.0.1:8043")
 	inDelay    = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=httptp")
-	inCompress = flag.String("inCompress", "flate", "Which compression to use for responses if -inType=httptp. "+
-		"Supported values:\n"+
+	inCompress = flag.String("inCompress", "flate", "Which compression to use for responses if -inType=httptp.\n"+
+		"\tSupported values:\n"+
 		"\tnone - responses aren't compressed. Low CPU usage at the cost of high network bandwidth\n"+
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
+	inTLSCert             = flag.String("inTLSCert", "", "Path to TLS certificate file if -inType=https")
+	inTLSKey              = flag.String("inTLSKey", "", "Path to TLS key file if -inType=https")
+	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https. Automatically generated if empty.\n"+
+		"\tSee https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details")
+
 	out = flag.String("out", "127.0.0.1:8043", "Comma-separated list of -outType addresses to forward requests to.\n"+
-		"Each request is forwarded to the least loaded address")
+		"\tEach request is forwarded to the least loaded address")
 	outType = flag.String("outType", "httptp", "Type of -out address. Supported values:\n"+
 		"\thttp - forward requests to HTTP servers on TCP, e.g. -out=127.0.0.1:80\n"+
 		"\tunix - forward requests to HTTP servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
 		"\thttptp - forward requests to httptp servers over TCP, e.g. -out=127.0.0.1:8043")
 	outDelay    = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=httptp")
-	outCompress = flag.String("outCompress", "flate", "Which compression to use for requests if -outType=httptp. "+
-		"Supported values:\n"+
+	outCompress = flag.String("outCompress", "flate", "Which compression to use for requests if -outType=httptp.\n"+
+		"\tSupported values:\n"+
 		"\tnone - requests aren't compressed. Low CPU usage at the cost of high network bandwidth\n"+
 		"\tflate - requests are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - requests are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
@@ -73,6 +81,8 @@ func main() {
 	switch *inType {
 	case "http":
 		serveHTTP()
+	case "https":
+		serveHTTPS()
 	case "unix":
 		serveUnix()
 	case "httptp":
@@ -169,6 +179,30 @@ func serveHTTP() {
 
 	log.Printf("listening for HTTP requests on %q", *in)
 	if err := s.Serve(ln); err != nil {
+		log.Fatalf("error in fasthttp server: %s", err)
+	}
+}
+
+func serveHTTPS() {
+	ln := newTCPListener()
+
+	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
+	if err != nil {
+		log.Fatalf("cannot load TLS certificate from -inTLSCert=%q and -inTLSKey=%q: %s", *inTLSCert, *inTLSKey, err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		PreferServerCipherSuites: true,
+	}
+	if len(*inTLSSessionTicketKey) > 0 {
+		tlsConfig.SessionTicketKey = sha256.Sum256([]byte(*inTLSSessionTicketKey))
+	}
+
+	lnTLS := tls.NewListener(ln, tlsConfig)
+	s := newHTTPServer()
+
+	log.Printf("listening for HTTPS requests on %q", *in)
+	if err := s.Serve(lnTLS); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
 }
