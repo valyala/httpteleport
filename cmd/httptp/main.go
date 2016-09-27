@@ -32,8 +32,8 @@ var (
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
-	inTLSCert             = flag.String("inTLSCert", "", "Path to TLS certificate file if -inType=https")
-	inTLSKey              = flag.String("inTLSKey", "", "Path to TLS key file if -inType=https")
+	inTLSCert             = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem", "Path to TLS certificate file if -inType=https")
+	inTLSKey              = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key", "Path to TLS key file if -inType=https")
 	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https. Automatically generated if empty.\n"+
 		"\tSee https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details")
 
@@ -66,7 +66,6 @@ func main() {
 	initExpvarServer()
 
 	outs := strings.Split(*out, ",")
-
 	switch *outType {
 	case "http":
 		initHTTPClients(outs)
