@@ -42,9 +42,11 @@ func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
 	return func(addr string) (net.Conn, error) {
 		conn, err := dial(addr)
 		if err != nil {
+			outDialError.Add(1)
 			return nil, err
 		}
 		outConns.Add(1)
+		outDialSuccess.Add(1)
 		return &expvarConn{Conn: conn}, nil
 	}
 }
@@ -61,4 +63,22 @@ func (c *expvarConn) Close() error {
 	return c.Conn.Close()
 }
 
-var outConns = expvar.NewInt("outConns")
+func (c *expvarConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	outBytesSent.Add(int64(n))
+	return n, err
+}
+
+func (c *expvarConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	outBytesRecv.Add(int64(n))
+	return n, err
+}
+
+var (
+	outConns       = expvar.NewInt("outConns")
+	outDialSuccess = expvar.NewInt("outDialSuccess")
+	outDialError   = expvar.NewInt("outDialError")
+	outBytesSent   = expvar.NewInt("outBytesSent")
+	outBytesRecv   = expvar.NewInt("outBytesRecv")
+)
