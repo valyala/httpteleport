@@ -1,10 +1,13 @@
 package main
 
 import (
+	"expvar"
 	"flag"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/expvarhandler"
 	"log"
+	"net"
+	"sync/atomic"
 )
 
 var (
@@ -34,3 +37,28 @@ func expvarHandler(ctx *fasthttp.RequestCtx) {
 		ctx.Error("unsupported path", fasthttp.StatusBadRequest)
 	}
 }
+
+func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
+	return func(addr string) (net.Conn, error) {
+		conn, err := dial(addr)
+		if err != nil {
+			return nil, err
+		}
+		outConns.Add(1)
+		return &expvarConn{Conn: conn}, nil
+	}
+}
+
+type expvarConn struct {
+	net.Conn
+	closed uint32
+}
+
+func (c *expvarConn) Close() error {
+	if atomic.AddUint32(&c.closed, 1) == 0 {
+		outConns.Add(-1)
+	}
+	return c.Conn.Close()
+}
+
+var outConns = expvar.NewInt("outConns")

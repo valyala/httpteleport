@@ -120,6 +120,7 @@ func initHTTPTPClients(outs []string) {
 	for _, addr := range outs {
 		c := &httpteleport.Client{
 			Addr:               addr,
+			Dial:               newExpvarDial(fasthttp.Dial),
 			MaxBatchDelay:      *outDelay,
 			MaxPendingRequests: concurrencyPerAddr,
 			ReadTimeout:        120 * time.Second,
@@ -151,7 +152,7 @@ func compressType(ct, name string) httpteleport.CompressType {
 func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int) client {
 	return &fasthttp.HostClient{
 		Addr:         addr,
-		Dial:         dial,
+		Dial:         newExpvarDial(dial),
 		MaxConns:     connsPerAddr,
 		ReadTimeout:  *timeout * 5,
 		WriteTimeout: *timeout,
