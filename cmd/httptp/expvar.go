@@ -48,10 +48,13 @@ func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
 		outConns.Add(1)
 		outDialSuccess.Add(1)
 		return &expvarConn{
-			Conn:      conn,
-			conns:     outConns,
-			bytesSent: outBytesSent,
-			bytesRecv: outBytesRecv,
+			Conn: conn,
+
+			conns:        outConns,
+			bytesWritten: outBytesWritten,
+			bytesRead:    outBytesRead,
+			writeError:   outWriteError,
+			readError:    outReadError,
 		}, nil
 	}
 }
@@ -59,9 +62,11 @@ func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
 type expvarConn struct {
 	net.Conn
 
-	conns     *expvar.Int
-	bytesSent *expvar.Int
-	bytesRecv *expvar.Int
+	conns        *expvar.Int
+	bytesWritten *expvar.Int
+	bytesRead    *expvar.Int
+	writeError   *expvar.Int
+	readError    *expvar.Int
 
 	closed uint32
 }
@@ -75,22 +80,30 @@ func (c *expvarConn) Close() error {
 
 func (c *expvarConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
-	c.bytesSent.Add(int64(n))
+	c.bytesWritten.Add(int64(n))
+	if err != nil {
+		c.writeError.Add(1)
+	}
 	return n, err
 }
 
 func (c *expvarConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
-	c.bytesRecv.Add(int64(n))
+	c.bytesRead.Add(int64(n))
+	if err != nil {
+		c.readError.Add(1)
+	}
 	return n, err
 }
 
 var (
-	outDialSuccess = expvar.NewInt("outDialSuccess")
-	outDialError   = expvar.NewInt("outDialError")
-	outConns       = expvar.NewInt("outConns")
-	outBytesSent   = expvar.NewInt("outBytesSent")
-	outBytesRecv   = expvar.NewInt("outBytesRecv")
+	outDialSuccess  = expvar.NewInt("outDialSuccess")
+	outDialError    = expvar.NewInt("outDialError")
+	outConns        = expvar.NewInt("outConns")
+	outBytesWritten = expvar.NewInt("outBytesWritten")
+	outBytesRead    = expvar.NewInt("outBytesRead")
+	outReadError    = expvar.NewInt("outReadError")
+	outWriteError   = expvar.NewInt("outWriteError")
 )
 
 type expvarListener struct {
@@ -106,10 +119,13 @@ func (ln *expvarListener) Accept() (net.Conn, error) {
 	inAcceptSuccess.Add(1)
 	inConns.Add(1)
 	return &expvarConn{
-		Conn:      conn,
-		conns:     inConns,
-		bytesSent: inBytesSent,
-		bytesRecv: inBytesRecv,
+		Conn: conn,
+
+		conns:        inConns,
+		bytesWritten: inBytesWritten,
+		bytesRead:    inBytesRead,
+		writeError:   inWriteError,
+		readError:    inReadError,
 	}, nil
 }
 
@@ -117,6 +133,8 @@ var (
 	inAcceptSuccess = expvar.NewInt("inAcceptSuccess")
 	inAcceptError   = expvar.NewInt("inAcceptError")
 	inConns         = expvar.NewInt("inConns")
-	inBytesSent     = expvar.NewInt("inBytesSent")
-	inBytesRecv     = expvar.NewInt("inBytesRecv")
+	inBytesWritten  = expvar.NewInt("inBytesWritten")
+	inBytesRead     = expvar.NewInt("inBytesRead")
+	inReadError     = expvar.NewInt("inReadError")
+	inWriteError    = expvar.NewInt("inWriteError")
 )
