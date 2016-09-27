@@ -47,38 +47,76 @@ func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
 		}
 		outConns.Add(1)
 		outDialSuccess.Add(1)
-		return &expvarConn{Conn: conn}, nil
+		return &expvarConn{
+			Conn:      conn,
+			conns:     outConns,
+			bytesSent: outBytesSent,
+			bytesRecv: outBytesRecv,
+		}, nil
 	}
 }
 
 type expvarConn struct {
 	net.Conn
+
+	conns     *expvar.Int
+	bytesSent *expvar.Int
+	bytesRecv *expvar.Int
+
 	closed uint32
 }
 
 func (c *expvarConn) Close() error {
-	if atomic.AddUint32(&c.closed, 1) == 0 {
-		outConns.Add(-1)
+	if atomic.AddUint32(&c.closed, 1) == 1 {
+		c.conns.Add(-1)
 	}
 	return c.Conn.Close()
 }
 
 func (c *expvarConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
-	outBytesSent.Add(int64(n))
+	c.bytesSent.Add(int64(n))
 	return n, err
 }
 
 func (c *expvarConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
-	outBytesRecv.Add(int64(n))
+	c.bytesRecv.Add(int64(n))
 	return n, err
 }
 
 var (
-	outConns       = expvar.NewInt("outConns")
 	outDialSuccess = expvar.NewInt("outDialSuccess")
 	outDialError   = expvar.NewInt("outDialError")
+	outConns       = expvar.NewInt("outConns")
 	outBytesSent   = expvar.NewInt("outBytesSent")
 	outBytesRecv   = expvar.NewInt("outBytesRecv")
+)
+
+type expvarListener struct {
+	net.Listener
+}
+
+func (ln *expvarListener) Accept() (net.Conn, error) {
+	conn, err := ln.Listener.Accept()
+	if err != nil {
+		inAcceptError.Add(1)
+		return nil, err
+	}
+	inAcceptSuccess.Add(1)
+	inConns.Add(1)
+	return &expvarConn{
+		Conn:      conn,
+		conns:     inConns,
+		bytesSent: inBytesSent,
+		bytesRecv: inBytesRecv,
+	}, nil
+}
+
+var (
+	inAcceptSuccess = expvar.NewInt("inAcceptSuccess")
+	inAcceptError   = expvar.NewInt("inAcceptError")
+	inConns         = expvar.NewInt("inConns")
+	inBytesSent     = expvar.NewInt("inBytesSent")
+	inBytesRecv     = expvar.NewInt("inBytesRecv")
 )

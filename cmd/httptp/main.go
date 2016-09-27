@@ -255,7 +255,9 @@ func newTCPListener() net.Listener {
 	if err != nil {
 		log.Fatalf("cannot listen to -in=%q: %s", *in, err)
 	}
-	return ln
+	return &expvarListener{
+		Listener: ln,
+	}
 }
 
 func newHTTPServer() *fasthttp.Server {
