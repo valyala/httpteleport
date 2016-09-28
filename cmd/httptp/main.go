@@ -32,6 +32,8 @@ var (
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
+	inAllowIP = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
+		"\tAll IP addresses are allowed if empty")
 	inTLSCert             = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem", "Path to TLS certificate file if -inType=https")
 	inTLSKey              = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key", "Path to TLS key file if -inType=https")
 	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https. Automatically generated if empty.\n"+
@@ -64,6 +66,14 @@ func main() {
 	flag.Parse()
 
 	initExpvarServer()
+
+	var err error
+	if allowedInIPs, err = parseAllowedIPs(*inAllowIP); err != nil {
+		log.Fatalf("cannot parse -inAllowIP: %s", err)
+	}
+	if allowedInIPs != nil {
+		log.Printf("allowing incoming connections from -inAllowIP=%s", *inAllowIP)
+	}
 
 	outs := strings.Split(*out, ",")
 	switch *outType {
@@ -254,10 +264,19 @@ func newTCPListener() net.Listener {
 	if err != nil {
 		log.Fatalf("cannot listen to -in=%q: %s", *in, err)
 	}
+
+	if allowedInIPs != nil {
+		ln = &ipCheckListener{
+			Listener:   ln,
+			allowedIPs: allowedInIPs,
+		}
+	}
 	return &expvarListener{
 		Listener: ln,
 	}
 }
+
+var allowedInIPs map[uint32]struct{}
 
 func newHTTPServer() *fasthttp.Server {
 	return &fasthttp.Server{
