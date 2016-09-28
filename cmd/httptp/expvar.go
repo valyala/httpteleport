@@ -55,6 +55,8 @@ func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
 			bytesRead:    outBytesRead,
 			writeError:   outWriteError,
 			readError:    outReadError,
+			writeCalls:   outWriteCalls,
+			readCalls:    outReadCalls,
 		}, nil
 	}
 }
@@ -67,6 +69,8 @@ type expvarConn struct {
 	bytesRead    *expvar.Int
 	writeError   *expvar.Int
 	readError    *expvar.Int
+	writeCalls   *expvar.Int
+	readCalls    *expvar.Int
 
 	closed uint32
 }
@@ -80,6 +84,7 @@ func (c *expvarConn) Close() error {
 
 func (c *expvarConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
+	c.writeCalls.Add(1)
 	c.bytesWritten.Add(int64(n))
 	if err != nil {
 		c.writeError.Add(1)
@@ -89,6 +94,7 @@ func (c *expvarConn) Write(p []byte) (int, error) {
 
 func (c *expvarConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
+	c.readCalls.Add(1)
 	c.bytesRead.Add(int64(n))
 	if err != nil {
 		c.readError.Add(1)
@@ -102,8 +108,10 @@ var (
 	outConns        = expvar.NewInt("outConns")
 	outBytesWritten = expvar.NewInt("outBytesWritten")
 	outBytesRead    = expvar.NewInt("outBytesRead")
-	outReadError    = expvar.NewInt("outReadError")
 	outWriteError   = expvar.NewInt("outWriteError")
+	outReadError    = expvar.NewInt("outReadError")
+	outWriteCalls   = expvar.NewInt("outWriteCalls")
+	outReadCalls    = expvar.NewInt("outReadCalls")
 )
 
 type expvarListener struct {
@@ -126,6 +134,8 @@ func (ln *expvarListener) Accept() (net.Conn, error) {
 		bytesRead:    inBytesRead,
 		writeError:   inWriteError,
 		readError:    inReadError,
+		writeCalls:   inWriteCalls,
+		readCalls:    inReadCalls,
 	}, nil
 }
 
@@ -135,6 +145,8 @@ var (
 	inConns         = expvar.NewInt("inConns")
 	inBytesWritten  = expvar.NewInt("inBytesWritten")
 	inBytesRead     = expvar.NewInt("inBytesRead")
-	inReadError     = expvar.NewInt("inReadError")
 	inWriteError    = expvar.NewInt("inWriteError")
+	inReadError     = expvar.NewInt("inReadError")
+	inWriteCalls    = expvar.NewInt("inWriteCalls")
+	inReadCalls     = expvar.NewInt("inReadCalls")
 )
