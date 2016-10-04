@@ -6,6 +6,31 @@ and load balancer, which accepts incoming requests at -in address and forwards
 them to -out addresses. Each request is forwarded to the least loaded
 -out address.
 
+
+# Features
+
+  * Fast. It is based on [fasthttp](https://github.com/valyala/fasthttp).
+    Easily handles 100K qps and over.
+
+  * May reduce required network bandwidth between servers by up to 10x. I.e.:
+
+    * 10Gbit HTTP traffic may be sent over 1Gbit link.
+    * 1Gbit HTTP traffic may be sent over 100Mbit link.
+    * 100Mbit HTTP traffic may be sent over 10Mbit link.
+
+    This may have the following benefits:
+
+    * Save a lot of money for expensive inter-datacenter traffic.
+    * Free internal network bandwidth for other services.
+
+  * May substitute nginx in reverse proxy mode, load balancer mode and
+    TLS offloading mode.
+
+  * May limit the maximum number of open connections per upstream host.
+
+  * May accept and/or forward http requests from/to unix sockets.
+
+
 # Usage
 
 ```
