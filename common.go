@@ -2,6 +2,7 @@ package httpteleport
 
 import (
 	"bufio"
+	"bytes"
 	"compress/flate"
 	"fmt"
 	"github.com/golang/snappy"
@@ -143,6 +144,11 @@ func handshakeWrite(conn net.Conn, compressType CompressType) error {
 	if err := conn.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		return fmt.Errorf("cannot set write timeout: %s", err)
 	}
+
+	if _, err := conn.Write(sniffHeader); err != nil {
+		return fmt.Errorf("cannot write sniffHeader: %s", err)
+	}
+
 	var buf [2]byte
 	buf[0] = protocolVersion1
 	buf[1] = byte(compressType)
@@ -159,6 +165,15 @@ func handshakeRead(conn net.Conn) (CompressType, error) {
 	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		return 0, fmt.Errorf("cannot set read timeout: %s", err)
 	}
+
+	sniffBuf := make([]byte, len(sniffHeader))
+	if _, err := io.ReadFull(conn, sniffBuf); err != nil {
+		return 0, fmt.Errorf("cannot read sniffHeader: %s", err)
+	}
+	if !bytes.Equal(sniffBuf, sniffHeader) {
+		return 0, fmt.Errorf("invalid sniffHeader read: %q. Expecting %q", sniffBuf, sniffHeader)
+	}
+
 	var buf [2]byte
 	if _, err := io.ReadFull(conn, buf[:]); err != nil {
 		return 0, fmt.Errorf("cannot read connection header: %s", err)
@@ -171,6 +186,8 @@ func handshakeRead(conn net.Conn) (CompressType, error) {
 	}
 	return CompressType(buf[1]), nil
 }
+
+var sniffHeader = []byte("httpteleport")
 
 var zeroTime time.Time
 
