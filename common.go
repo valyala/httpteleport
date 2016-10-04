@@ -13,7 +13,7 @@ import (
 
 const (
 	// DefaultMaxPendingRequests is the default number of pending requests
-	// a single Client queue before sending them to the server.
+	// a single Client may queue before sending them to the server.
 	//
 	// This parameter may be overriden by Client.MaxPendingRequests.
 	DefaultMaxPendingRequests = 1000
