@@ -25,5 +25,5 @@ connection. This solves the following issues:
 
 [Docs](https://godoc.org/github.com/valyala/httpteleport)
 
-[httptp](https://github.com/valyala/httpteleport/cmd/httptp) - reverse proxy and
+[httptp](https://github.com/valyala/httpteleport/tree/master/cmd/httptp) - reverse proxy and
 load balancer based on httpteleport.
