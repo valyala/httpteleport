@@ -271,8 +271,10 @@ func (c *Client) worker() {
 			continue
 		}
 		c.setLastError(err)
+		laddr := conn.LocalAddr().String()
+		raddr := conn.RemoteAddr().String()
 		if err = c.serveConn(conn); err != nil {
-			err = fmt.Errorf("error on connection %q<->%q: %s", conn.LocalAddr(), conn.RemoteAddr(), err)
+			err = fmt.Errorf("error on connection %q<->%q: %s", laddr, raddr, err)
 		}
 		c.setLastError(err)
 	}

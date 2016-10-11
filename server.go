@@ -131,9 +131,10 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 
 		go func() {
+			laddr := conn.LocalAddr().String()
+			raddr := conn.RemoteAddr().String()
 			if err := s.serveConn(conn); err != nil {
-				s.logger().Printf("httpteleport.Server: error on connection %q<->%q: %s",
-					conn.LocalAddr(), conn.RemoteAddr(), err)
+				s.logger().Printf("httpteleport.Server: error on connection %q<->%q: %s", laddr, raddr, err)
 			}
 		}()
 	}
