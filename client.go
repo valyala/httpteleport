@@ -284,6 +284,7 @@ func (c *Client) serveConn(conn net.Conn) error {
 	br, bw, err := newBufioConn(conn, c.ReadBufferSize, c.WriteBufferSize, c.CompressType, c.TLSConfig, false)
 	if err != nil {
 		conn.Close()
+		time.Sleep(time.Second)
 		return err
 	}
 
