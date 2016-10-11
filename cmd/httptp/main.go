@@ -21,9 +21,9 @@ var (
 
 	in     = flag.String("in", "127.0.0.1:8080", "-inType address to listen to for incoming requests")
 	inType = flag.String("inType", "http", "Type of -in address. Supported values:\n"+
-		"\thttp - accept HTTP requests over TCP, e.g. -in=127.0.0.1:8080\n"+
-		"\thttps - accept HTTPS requests over TCP, e.g. -in=127.0.0.1:443\n"+
-		"\tunix - accept HTTP requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
+		"\thttp - accept http requests over TCP, e.g. -in=127.0.0.1:8080\n"+
+		"\thttps - accept https requests over TCP, e.g. -in=127.0.0.1:443\n"+
+		"\tunix - accept http requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
 		"\tteleport - accept httpteleport connections over TCP, e.g. -in=127.0.0.1:8043")
 	inDelay    = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=teleport")
 	inCompress = flag.String("inCompress", "flate", "Which compression to use for responses if -inType=teleport.\n"+
@@ -34,17 +34,23 @@ var (
 
 	inAllowIP = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
 		"\tAll IP addresses are allowed if empty")
-	inTLSCert             = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem", "Path to TLS certificate file if -inType=https")
-	inTLSKey              = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key", "Path to TLS key file if -inType=https")
-	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https. Automatically generated if empty.\n"+
+	inTLSCert = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem",
+		"Path to TLS certificate file if -inType=https or teleport")
+	inTLSKey = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key",
+		"Path to TLS key file if -inType=https or teleport")
+	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https or teleport. "+
+		"Automatically generated if empty.\n"+
 		"\tSee https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details")
 
 	out = flag.String("out", "127.0.0.1:8043", "Comma-separated list of -outType addresses to forward requests to.\n"+
 		"\tEach request is forwarded to the least loaded address")
 	outType = flag.String("outType", "teleport", "Type of -out address. Supported values:\n"+
-		"\thttp - forward requests to HTTP servers on TCP, e.g. -out=127.0.0.1:80\n"+
-		"\tunix - forward requests to HTTP servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
-		"\tteleport - forward requests to httpteleport servers over TCP, e.g. -out=127.0.0.1:8043")
+		"\thttp - forward requests to http servers on TCP, e.g. -out=127.0.0.1:80\n"+
+		"\thttps - forward requests to https servers on TCP, e.g -out=127.0.0.1:443\n"+
+		"\tunix - forward requests to http servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
+		"\tteleport - forward requests to httpteleport servers over TCP, e.g. -out=127.0.0.1:8043\n"+
+		"\ttepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043. "+
+		"Server must properly set -inTLS* flags in order to accept encrypted TCP connections")
 	outDelay    = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=teleport")
 	outCompress = flag.String("outCompress", "flate", "Which compression to use for requests if -outType=teleport.\n"+
 		"\tSupported values:\n"+
@@ -80,12 +86,16 @@ func main() {
 	switch *outType {
 	case "http":
 		initHTTPClients(outs)
+	case "https":
+		initHTTPSClients(outs)
 	case "unix":
 		initUnixClients(outs)
 	case "teleport":
-		initHTTPTPClients(outs)
+		initTeleportClients(outs)
+	case "teleports":
+		initTeleportsClients(outs)
 	default:
-		log.Fatalf("unknown -outType=%q. Supported values are: http, unix, teleport", *outType)
+		log.Fatalf("unknown -outType=%q. Supported values are: http, https, unix, teleport, teleports", *outType)
 	}
 
 	switch *inType {
@@ -96,29 +106,41 @@ func main() {
 	case "unix":
 		serveUnix()
 	case "teleport":
-		serveHTTPTP()
+		serveTeleport()
 	default:
 		log.Fatalf("unknown -inType=%q. Supported values are: http, https, unix and teleport", *inType)
 	}
 }
 
 func initHTTPClients(outs []string) {
+	initHTTPClientsExt(outs, false)
+}
+
+func initHTTPSClients(outs []string) {
+	initHTTPClientsExt(outs, true)
+}
+
+func initHTTPClientsExt(outs []string, isTLS bool) {
 	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	for _, addr := range outs {
-		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr)
+		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr, isTLS)
 		upstreamClients = append(upstreamClients, c)
 	}
-	log.Printf("forwarding requests to HTTP servers at %q", outs)
+	tlsSuffix := ""
+	if isTLS {
+		tlsSuffix = "s"
+	}
+	log.Printf("forwarding requests to http%s servers at %q", tlsSuffix, outs)
 }
 
 func initUnixClients(outs []string) {
 	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	for _, addr := range outs {
 		verifyUnixAddr(addr)
-		c := newHTTPClient(dialUnix, addr, connsPerAddr)
+		c := newHTTPClient(dialUnix, addr, connsPerAddr, false)
 		upstreamClients = append(upstreamClients, c)
 	}
-	log.Printf("forwarding requests to HTTP servers at unix:%q", outs)
+	log.Printf("forwarding requests to http servers at unix:%q", outs)
 }
 
 func verifyUnixAddr(addr string) {
@@ -132,7 +154,15 @@ func verifyUnixAddr(addr string) {
 	}
 }
 
-func initHTTPTPClients(outs []string) {
+func initTeleportClients(outs []string) {
+	initTeleportClientsExt(outs, false)
+}
+
+func initTeleportsClients(outs []string) {
+	initTeleportClientsExt(outs, true)
+}
+
+func initTeleportClientsExt(outs []string, isTLS bool) {
 	concurrencyPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	concurrencyPerAddr = (concurrencyPerAddr + *outConnsPerAddr - 1) / *outConnsPerAddr
 	outCompressType := compressType(*outCompress, "outCompress")
@@ -146,6 +176,15 @@ func initHTTPTPClients(outs []string) {
 			ReadTimeout:        120 * time.Second,
 			WriteTimeout:       5 * time.Second,
 			CompressType:       outCompressType,
+		}
+		if isTLS {
+			serverName, _, err := net.SplitHostPort(addr)
+			if err != nil {
+				log.Fatalf("cannot extract teleport server name from %q: %s", addr, err)
+			}
+			c.TLSConfig = &tls.Config{
+				ServerName: serverName,
+			}
 		}
 		cs = append(cs, c)
 	}
@@ -169,14 +208,25 @@ func compressType(ct, name string) httpteleport.CompressType {
 	panic("unreached")
 }
 
-func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int) client {
-	return &fasthttp.HostClient{
+func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int, isTLS bool) client {
+	c := &fasthttp.HostClient{
 		Addr:         addr,
 		Dial:         newExpvarDial(dial),
 		MaxConns:     connsPerAddr,
 		ReadTimeout:  *timeout * 5,
 		WriteTimeout: *timeout,
 	}
+	if isTLS {
+		serverName, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			log.Fatalf("cannot extract http server name from %q: %s", addr, err)
+		}
+		c.IsTLS = true
+		c.TLSConfig = &tls.Config{
+			ServerName: serverName,
+		}
+	}
+	return c
 }
 
 func dialUnix(addr string) (net.Conn, error) {
@@ -187,7 +237,7 @@ func serveHTTP() {
 	ln := newTCPListener()
 	s := newHTTPServer()
 
-	log.Printf("listening for HTTP requests on %q", *in)
+	log.Printf("listening for http requests on %q", *in)
 	if err := s.Serve(ln); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
@@ -195,23 +245,11 @@ func serveHTTP() {
 
 func serveHTTPS() {
 	ln := newTCPListener()
-
-	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
-	if err != nil {
-		log.Fatalf("cannot load TLS certificate from -inTLSCert=%q and -inTLSKey=%q: %s", *inTLSCert, *inTLSKey, err)
-	}
-	tlsConfig := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
-		PreferServerCipherSuites: true,
-	}
-	if len(*inTLSSessionTicketKey) > 0 {
-		tlsConfig.SessionTicketKey = sha256.Sum256([]byte(*inTLSSessionTicketKey))
-	}
-
+	tlsConfig := newInTLSConfig()
 	lnTLS := tls.NewListener(ln, tlsConfig)
 	s := newHTTPServer()
 
-	log.Printf("listening for HTTPS requests on %q", *in)
+	log.Printf("listening for https requests on %q", *in)
 	if err := s.Serve(lnTLS); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
@@ -232,19 +270,24 @@ func serveUnix() {
 	}
 	s := newHTTPServer()
 
-	log.Printf("listening for HTTP requests on unix:%q", addr)
+	log.Printf("listening for http requests on unix:%q", addr)
 	if err := s.Serve(ln); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
 }
 
-func serveHTTPTP() {
+func serveTeleport() {
 	ln := newTCPListener()
+	var tlsConfig *tls.Config
+	if len(*inTLSCert) > 0 {
+		tlsConfig = newInTLSConfig()
+	}
 	inCompressType := compressType(*inCompress, "inCompress")
 	s := httpteleport.Server{
 		Handler:           httpteleportRequestHandler,
 		Concurrency:       *concurrency,
 		MaxBatchDelay:     *inDelay,
+		TLSConfig:         tlsConfig,
 		ReduceMemoryUsage: true,
 		ReadTimeout:       120 * time.Second,
 		WriteTimeout:      5 * time.Second,
@@ -316,7 +359,7 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	ctx.ResetBody()
-	fmt.Fprintf(ctx, "HTTP proxying error: %s", err)
+	fmt.Fprintf(ctx, "http proxying error: %s", err)
 	if err == fasthttp.ErrTimeout {
 		inRequestTimeoutError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusGatewayTimeout)
@@ -377,4 +420,19 @@ func leastLoadedClient() client {
 		}
 	}
 	return minC
+}
+
+func newInTLSConfig() *tls.Config {
+	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
+	if err != nil {
+		log.Fatalf("cannot load TLS certificate from -inTLSCert=%q and -inTLSKey=%q: %s", *inTLSCert, *inTLSKey, err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates:             []tls.Certificate{cert},
+		PreferServerCipherSuites: true,
+	}
+	if len(*inTLSSessionTicketKey) > 0 {
+		tlsConfig.SessionTicketKey = sha256.Sum256([]byte(*inTLSSessionTicketKey))
+	}
+	return tlsConfig
 }

@@ -23,6 +23,8 @@ them to -out addresses. Each request is forwarded to the least loaded
     * Save a lot of money for expensive inter-datacenter traffic.
     * Free internal network bandwidth for other services.
 
+  * Supports encrypted connections.
+
   * May substitute nginx in reverse proxy mode, load balancer mode and
     TLS offloading mode.
 
