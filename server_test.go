@@ -3,6 +3,7 @@ package httpteleport
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"fmt"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
@@ -71,7 +72,7 @@ func testServerBrokenClient(t *testing.T, clientConnFunc func(net.Conn) error) {
 			clientStopCh <- err
 			return
 		}
-		readCompressType, err := handshakeClient(conn, CompressNone)
+		readCompressType, realConn, err := handshakeClient(conn, CompressNone, nil)
 		if err != nil {
 			clientStopCh <- err
 			return
@@ -80,7 +81,7 @@ func testServerBrokenClient(t *testing.T, clientConnFunc func(net.Conn) error) {
 			clientStopCh <- fmt.Errorf("unexpected read CompressType: %v. Expecting %v", readCompressType, CompressNone)
 			return
 		}
-		clientStopCh <- clientConnFunc(conn)
+		clientStopCh <- clientConnFunc(realConn)
 	}()
 
 	select {
@@ -90,6 +91,99 @@ func testServerBrokenClient(t *testing.T, clientConnFunc func(net.Conn) error) {
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("timeout")
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerWithoutTLS(t *testing.T) {
+	s := &Server{
+		Handler: testGetHandler,
+		Logger:  &nilLogger{},
+	}
+	serverStop, c := newTestServerClientExt(s)
+	c.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	var req fasthttp.Request
+	var resp fasthttp.Response
+
+	for i := 0; i < 10; i++ {
+		req.Header.SetHost("boobar.com")
+		req.SetRequestURI("/aaa")
+		err := c.DoTimeout(&req, &resp, time.Millisecond)
+		if err == nil {
+			t.Fatalf("expecting non-nil error")
+		}
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerTLSUnencryptedConn(t *testing.T) {
+	tlsConfig, err := newTestServerTLSConfig()
+	if err != nil {
+		t.Fatalf("cannot create server TLS config: %s", err)
+	}
+	s := &Server{
+		Handler:   testGetHandler,
+		TLSConfig: tlsConfig,
+	}
+	serverStop, c := newTestServerClientExt(s)
+
+	if err := testGet(c); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerTLSSerial(t *testing.T) {
+	tlsConfig, err := newTestServerTLSConfig()
+	if err != nil {
+		t.Fatalf("cannot create server TLS config: %s", err)
+	}
+	s := &Server{
+		Handler:   testGetHandler,
+		TLSConfig: tlsConfig,
+	}
+	serverStop, c := newTestServerClientExt(s)
+	c.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	if err := testGet(c); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerTLSConcurrent(t *testing.T) {
+	tlsConfig, err := newTestServerTLSConfig()
+	if err != nil {
+		t.Fatalf("cannot create server TLS config: %s", err)
+	}
+	s := &Server{
+		Handler:   testGetHandler,
+		TLSConfig: tlsConfig,
+	}
+	serverStop, c := newTestServerClientExt(s)
+	c.TLSConfig = &tls.Config{
+		InsecureSkipVerify: true,
+	}
+
+	if err := testServerClientConcurrent(func() error { return testGet(c) }); err != nil {
+		t.Fatalf("unexpected error: %s", err)
 	}
 
 	if err := serverStop(); err != nil {
@@ -700,4 +794,17 @@ func testSleepHandler(ctx *fasthttp.RequestCtx) {
 	sleepDuration := time.Duration(rand.Intn(30)) * time.Millisecond
 	time.Sleep(sleepDuration)
 	fmt.Fprintf(ctx, "slept for %s", sleepDuration)
+}
+
+func newTestServerTLSConfig() (*tls.Config, error) {
+	tlsCertFile := "./ssl-cert-snakeoil.pem"
+	tlsKeyFile := "./ssl-cert-snakeoil.key"
+	cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", tlsCertFile, tlsKeyFile, err)
+	}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}
+	return tlsConfig, nil
 }

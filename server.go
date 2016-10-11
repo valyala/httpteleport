@@ -2,6 +2,7 @@ package httpteleport
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/tcplisten"
@@ -30,6 +31,15 @@ type Server struct {
 	//
 	// DefaultConcurrency is used by default.
 	Concurrency int
+
+	// TLSConfig is TLS (aka SSL) config used for accepting encrypted
+	// client connections.
+	//
+	// Encrypted connections may be used for tranferring sensitive
+	// information between datacenters.
+	//
+	// By default server accepts only unencrypted connections.
+	TLSConfig *tls.Config
 
 	// MaxBatchDelay is the maximum duration before ready responses
 	// are sent to the client.
@@ -130,7 +140,7 @@ func (s *Server) Serve(ln net.Listener) error {
 }
 
 func (s *Server) serveConn(conn net.Conn) error {
-	br, bw, err := newBufioConn(conn, s.ReadBufferSize, s.WriteBufferSize, s.CompressType, true)
+	br, bw, err := newBufioConn(conn, s.ReadBufferSize, s.WriteBufferSize, s.CompressType, s.TLSConfig, true)
 	if err != nil {
 		conn.Close()
 		return err

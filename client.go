@@ -2,6 +2,7 @@ package httpteleport
 
 import (
 	"bufio"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"github.com/valyala/fasthttp"
@@ -12,7 +13,12 @@ import (
 	"time"
 )
 
-// Client teleports http requests to the given httpteleport Server.
+// Client teleports http requests to the given httpteleport Server over a single
+// connection.
+//
+// Use multiple clients for establishing multiple connections to the server
+// if a single connection processing consumes 100% of a single CPU core
+// on either multi-core client or server.
 type Client struct {
 	// Addr is the httpteleport Server address to connect to.
 	Addr string
@@ -26,6 +32,15 @@ type Client struct {
 	//
 	// fasthttp.Dial is used by default.
 	Dial func(addr string) (net.Conn, error)
+
+	// TLSConfig is TLS (aka SSL) config used for establishing encrypted
+	// connection to the server.
+	//
+	// Encrypted connections may be used for tranferring sensitive
+	// information between datacenters.
+	//
+	// By default connection to the server isn't encrypted.
+	TLSConfig *tls.Config
 
 	// MaxPendingRequests is the maximum number of pending requests
 	// the client may issue until the server responds to them.
@@ -264,7 +279,7 @@ func (c *Client) worker() {
 }
 
 func (c *Client) serveConn(conn net.Conn) error {
-	br, bw, err := newBufioConn(conn, c.ReadBufferSize, c.WriteBufferSize, c.CompressType, false)
+	br, bw, err := newBufioConn(conn, c.ReadBufferSize, c.WriteBufferSize, c.CompressType, c.TLSConfig, false)
 	if err != nil {
 		conn.Close()
 		return err

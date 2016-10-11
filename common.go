@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/flate"
+	"crypto/tls"
 	"fmt"
 	"github.com/golang/snappy"
 	"io"
@@ -72,18 +73,14 @@ const (
 )
 
 func newBufioConn(conn net.Conn, readBufferSize, writeBufferSize int,
-	writeCompressType CompressType, isServer bool) (*bufio.Reader, *bufio.Writer, error) {
+	writeCompressType CompressType, tlsConfig *tls.Config, isServer bool) (*bufio.Reader, *bufio.Writer, error) {
 
-	handshake := handshakeClient
-	if isServer {
-		handshake = handshakeServer
-	}
-	readCompressType, err := handshake(conn, writeCompressType)
+	readCompressType, realConn, err := handshake(conn, writeCompressType, tlsConfig, isServer)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error in handshake: %s", err)
+		return nil, nil, err
 	}
 
-	r := io.Reader(conn)
+	r := io.Reader(realConn)
 	switch readCompressType {
 	case CompressNone:
 	case CompressFlate:
@@ -98,7 +95,7 @@ func newBufioConn(conn net.Conn, readBufferSize, writeBufferSize int,
 	}
 	br := bufio.NewReaderSize(r, readBufferSize)
 
-	w := io.Writer(conn)
+	w := io.Writer(realConn)
 	switch writeCompressType {
 	case CompressNone:
 	case CompressFlate:
@@ -122,69 +119,115 @@ func newBufioConn(conn net.Conn, readBufferSize, writeBufferSize int,
 	return br, bw, nil
 }
 
-func handshakeServer(conn net.Conn, compressType CompressType) (CompressType, error) {
-	readCompressType, err := handshakeRead(conn)
+func handshake(conn net.Conn, writeCompressType CompressType, tlsConfig *tls.Config, isServer bool) (
+	readCompressType CompressType, realConn net.Conn, err error) {
+	handshakeFunc := handshakeClient
+	if isServer {
+		handshakeFunc = handshakeServer
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	if err = conn.SetWriteDeadline(deadline); err != nil {
+		return 0, nil, fmt.Errorf("cannot set write timeout: %s", err)
+	}
+	if err = conn.SetReadDeadline(deadline); err != nil {
+		return 0, nil, fmt.Errorf("cannot set read timeout: %s", err)
+	}
+	readCompressType, realConn, err = handshakeFunc(conn, writeCompressType, tlsConfig)
 	if err != nil {
-		return 0, err
+		return 0, nil, fmt.Errorf("error in handshake: %s", err)
 	}
-	if err := handshakeWrite(conn, compressType); err != nil {
-		return 0, err
+	if err = conn.SetWriteDeadline(zeroTime); err != nil {
+		return 0, nil, fmt.Errorf("cannot reset write timeout: %s", err)
 	}
-	return readCompressType, nil
+	if err = conn.SetReadDeadline(zeroTime); err != nil {
+		return 0, nil, fmt.Errorf("cannot reset read timeout: %s", err)
+	}
+	return readCompressType, realConn, err
 }
 
-func handshakeClient(conn net.Conn, compressType CompressType) (CompressType, error) {
-	if err := handshakeWrite(conn, compressType); err != nil {
-		return 0, err
+func handshakeServer(conn net.Conn, compressType CompressType, tlsConfig *tls.Config) (CompressType, net.Conn, error) {
+	readCompressType, isTLS, err := handshakeRead(conn)
+	if err != nil {
+		return 0, nil, err
 	}
-	return handshakeRead(conn)
+	if isTLS && tlsConfig == nil {
+		handshakeWrite(conn, compressType, false)
+		return 0, nil, fmt.Errorf("Cannot serve encrypted client connection. " +
+			"Set Server.TLSConfig for supporting encrypted connections")
+	}
+	if err := handshakeWrite(conn, compressType, isTLS); err != nil {
+		return 0, nil, err
+	}
+	if isTLS {
+		tlsConn := tls.Server(conn, tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			return 0, nil, fmt.Errorf("error in TLS handshake: %s", err)
+		}
+		conn = tlsConn
+	}
+	return readCompressType, conn, nil
 }
 
-func handshakeWrite(conn net.Conn, compressType CompressType) error {
-	if err := conn.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		return fmt.Errorf("cannot set write timeout: %s", err)
+func handshakeClient(conn net.Conn, compressType CompressType, tlsConfig *tls.Config) (CompressType, net.Conn, error) {
+	isTLS := tlsConfig != nil
+	if err := handshakeWrite(conn, compressType, isTLS); err != nil {
+		return 0, nil, err
 	}
+	readCompressType, isTLSCheck, err := handshakeRead(conn)
+	if err != nil {
+		return 0, nil, err
+	}
+	if isTLS {
+		if !isTLSCheck {
+			return 0, nil, fmt.Errorf("Server doesn't support encrypted connections. " +
+				"Set Server.TLSConfig for enabling encrypted connections on the server")
+		}
+		tlsConn := tls.Client(conn, tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			return 0, nil, fmt.Errorf("error in TLS handshake: %s", err)
+		}
+		conn = tlsConn
+	}
+	return readCompressType, conn, nil
+}
 
+func handshakeWrite(conn net.Conn, compressType CompressType, isTLS bool) error {
 	if _, err := conn.Write(sniffHeader); err != nil {
 		return fmt.Errorf("cannot write sniffHeader: %s", err)
 	}
 
-	var buf [2]byte
+	var buf [3]byte
 	buf[0] = protocolVersion1
 	buf[1] = byte(compressType)
+	if isTLS {
+		buf[2] = 1
+	}
 	if _, err := conn.Write(buf[:]); err != nil {
 		return fmt.Errorf("cannot write connection header: %s", err)
-	}
-	if err := conn.SetWriteDeadline(zeroTime); err != nil {
-		return fmt.Errorf("cannot reset write timeout: %s", err)
 	}
 	return nil
 }
 
-func handshakeRead(conn net.Conn) (CompressType, error) {
-	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
-		return 0, fmt.Errorf("cannot set read timeout: %s", err)
-	}
-
+func handshakeRead(conn net.Conn) (CompressType, bool, error) {
 	sniffBuf := make([]byte, len(sniffHeader))
 	if _, err := io.ReadFull(conn, sniffBuf); err != nil {
-		return 0, fmt.Errorf("cannot read sniffHeader: %s", err)
+		return 0, false, fmt.Errorf("cannot read sniffHeader: %s", err)
 	}
 	if !bytes.Equal(sniffBuf, sniffHeader) {
-		return 0, fmt.Errorf("invalid sniffHeader read: %q. Expecting %q", sniffBuf, sniffHeader)
+		return 0, false, fmt.Errorf("invalid sniffHeader read: %q. Expecting %q", sniffBuf, sniffHeader)
 	}
 
-	var buf [2]byte
+	var buf [3]byte
 	if _, err := io.ReadFull(conn, buf[:]); err != nil {
-		return 0, fmt.Errorf("cannot read connection header: %s", err)
+		return 0, false, fmt.Errorf("cannot read connection header: %s", err)
 	}
 	if buf[0] != protocolVersion1 {
-		return 0, fmt.Errorf("server returned unknown protocol version: %d", buf[0])
+		return 0, false, fmt.Errorf("server returned unknown protocol version: %d", buf[0])
 	}
-	if err := conn.SetReadDeadline(zeroTime); err != nil {
-		return 0, fmt.Errorf("cannot reset read timeout: %s", err)
-	}
-	return CompressType(buf[1]), nil
+	compressType := CompressType(buf[1])
+	isTLS := buf[2] != 0
+
+	return compressType, isTLS, nil
 }
 
 var sniffHeader = []byte("httpteleport")

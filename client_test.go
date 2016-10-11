@@ -176,7 +176,7 @@ func testClientBrokenServer(t *testing.T, serverConnFunc func(net.Conn) error) {
 			serverStopCh <- err
 			return
 		}
-		readCompressType, err := handshakeServer(conn, CompressNone)
+		readCompressType, realConn, err := handshakeServer(conn, CompressNone, nil)
 		if err != nil {
 			serverStopCh <- err
 			return
@@ -185,7 +185,7 @@ func testClientBrokenServer(t *testing.T, serverConnFunc func(net.Conn) error) {
 			serverStopCh <- fmt.Errorf("unexpected read CompressType: %v. Expecting %v", readCompressType, CompressNone)
 			return
 		}
-		serverStopCh <- serverConnFunc(conn)
+		serverStopCh <- serverConnFunc(realConn)
 	}()
 
 	var req fasthttp.Request
