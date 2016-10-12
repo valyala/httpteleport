@@ -1,6 +1,7 @@
 package httpteleport
 
 import (
+	"crypto/tls"
 	"github.com/valyala/fasthttp"
 	"runtime"
 	"sync/atomic"
@@ -9,58 +10,74 @@ import (
 )
 
 func BenchmarkEndToEndGetNoDelay1(b *testing.B) {
-	benchmarkEndToEndGet(b, 1, 0, CompressNone)
+	benchmarkEndToEndGet(b, 1, 0, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetNoDelay10(b *testing.B) {
-	benchmarkEndToEndGet(b, 10, 0, CompressNone)
+	benchmarkEndToEndGet(b, 10, 0, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetNoDelay100(b *testing.B) {
-	benchmarkEndToEndGet(b, 100, 0, CompressNone)
+	benchmarkEndToEndGet(b, 100, 0, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetNoDelay1000(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 0, CompressNone)
+	benchmarkEndToEndGet(b, 1000, 0, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetNoDelay10K(b *testing.B) {
-	benchmarkEndToEndGet(b, 10000, 0, CompressNone)
+	benchmarkEndToEndGet(b, 10000, 0, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetDelay1ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetDelay2ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetDelay4ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetDelay8ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetDelay16ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetCompressNone(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false)
 }
 
 func BenchmarkEndToEndGetCompressFlate(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, false)
 }
 
 func BenchmarkEndToEndGetCompressSnappy(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, false)
 }
 
-func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration, compressType CompressType) {
+func BenchmarkEndToEndGetTLSCompressNone(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, true)
+}
+
+func BenchmarkEndToEndGetTLSCompressFlate(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, true)
+}
+
+func BenchmarkEndToEndGetTLSCompressSnappy(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, true)
+}
+
+func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration, compressType CompressType, isTLS bool) {
+	var tlsConfig *tls.Config
+	if isTLS {
+		tlsConfig = newTestServerTLSConfig()
+	}
 	var serverBatchDelay time.Duration
 	if batchDelay > 0 {
 		serverBatchDelay = 100 * time.Microsecond
@@ -76,6 +93,7 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duratio
 		Concurrency:   parallelism * runtime.NumCPU(),
 		MaxBatchDelay: serverBatchDelay,
 		CompressType:  compressType,
+		TLSConfig:     tlsConfig,
 	}
 	serverStop, ln := newTestServerExt(s)
 
@@ -85,6 +103,11 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duratio
 		c.MaxPendingRequests = s.Concurrency
 		c.MaxBatchDelay = batchDelay
 		c.CompressType = compressType
+		if isTLS {
+			c.TLSConfig = &tls.Config{
+				InsecureSkipVerify: true,
+			}
+		}
 		cc = append(cc, c)
 	}
 	var clientIdx uint32

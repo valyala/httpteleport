@@ -126,10 +126,7 @@ func TestServerWithoutTLS(t *testing.T) {
 }
 
 func TestServerTLSUnencryptedConn(t *testing.T) {
-	tlsConfig, err := newTestServerTLSConfig()
-	if err != nil {
-		t.Fatalf("cannot create server TLS config: %s", err)
-	}
+	tlsConfig := newTestServerTLSConfig()
 	s := &Server{
 		Handler:   testGetHandler,
 		TLSConfig: tlsConfig,
@@ -146,10 +143,7 @@ func TestServerTLSUnencryptedConn(t *testing.T) {
 }
 
 func TestServerTLSSerial(t *testing.T) {
-	tlsConfig, err := newTestServerTLSConfig()
-	if err != nil {
-		t.Fatalf("cannot create server TLS config: %s", err)
-	}
+	tlsConfig := newTestServerTLSConfig()
 	s := &Server{
 		Handler:   testGetHandler,
 		TLSConfig: tlsConfig,
@@ -169,10 +163,7 @@ func TestServerTLSSerial(t *testing.T) {
 }
 
 func TestServerTLSConcurrent(t *testing.T) {
-	tlsConfig, err := newTestServerTLSConfig()
-	if err != nil {
-		t.Fatalf("cannot create server TLS config: %s", err)
-	}
+	tlsConfig := newTestServerTLSConfig()
 	s := &Server{
 		Handler:   testGetHandler,
 		TLSConfig: tlsConfig,
@@ -796,15 +787,15 @@ func testSleepHandler(ctx *fasthttp.RequestCtx) {
 	fmt.Fprintf(ctx, "slept for %s", sleepDuration)
 }
 
-func newTestServerTLSConfig() (*tls.Config, error) {
+func newTestServerTLSConfig() *tls.Config {
 	tlsCertFile := "./ssl-cert-snakeoil.pem"
 	tlsKeyFile := "./ssl-cert-snakeoil.key"
 	cert, err := tls.LoadX509KeyPair(tlsCertFile, tlsKeyFile)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", tlsCertFile, tlsKeyFile, err)
+		panic(fmt.Sprintf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", tlsCertFile, tlsKeyFile, err))
 	}
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 	}
-	return tlsConfig, nil
+	return tlsConfig
 }

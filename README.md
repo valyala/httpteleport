@@ -70,4 +70,7 @@ BenchmarkEndToEndGetDelay16ms      	 1000000	     20461 ns/op	  12.76 MB/s	     
 BenchmarkEndToEndGetCompressNone   	 3000000	      5809 ns/op	  44.93 MB/s	       2 B/op	       0 allocs/op
 BenchmarkEndToEndGetCompressFlate  	 1000000	     10608 ns/op	  24.60 MB/s	      12 B/op	       0 allocs/op
 BenchmarkEndToEndGetCompressSnappy 	 2000000	      6252 ns/op	  41.75 MB/s	       3 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressNone   	 2000000	      6152 ns/op	  42.42 MB/s	       3 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressFlate  	 1000000	     10702 ns/op	  24.39 MB/s	      13 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressSnappy 	 2000000	      6314 ns/op	  41.33 MB/s	       4 B/op	       0 allocs/op
 ```
