@@ -24,7 +24,8 @@ var (
 		"\thttp - accept http requests over TCP, e.g. -in=127.0.0.1:8080\n"+
 		"\thttps - accept https requests over TCP, e.g. -in=127.0.0.1:443\n"+
 		"\tunix - accept http requests over unix socket, e.g. -in=/var/httptp/sock.unix\n"+
-		"\tteleport - accept httpteleport connections over TCP, e.g. -in=127.0.0.1:8043")
+		"\tteleport - accept httpteleport connections over TCP, e.g. -in=127.0.0.1:8043\n"+
+		"\tteleports - accept httpteleport connections over encrypted TCP, e.g. -in=127.0.0.1:8443")
 	inDelay    = flag.Duration("inDelay", 0, "How long to wait before sending batched responses back if -inType=teleport")
 	inCompress = flag.String("inCompress", "flate", "Which compression to use for responses if -inType=teleport.\n"+
 		"\tSupported values:\n"+
@@ -35,10 +36,10 @@ var (
 	inAllowIP = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
 		"\tAll IP addresses are allowed if empty")
 	inTLSCert = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem",
-		"Path to TLS certificate file if -inType=https or teleport")
+		"Path to TLS certificate file if -inType=https or teleports")
 	inTLSKey = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key",
-		"Path to TLS key file if -inType=https or teleport")
-	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https or teleport. "+
+		"Path to TLS key file if -inType=https or teleports")
+	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https or teleports. "+
 		"Automatically generated if empty.\n"+
 		"\tSee https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details")
 
@@ -107,8 +108,10 @@ func main() {
 		serveUnix()
 	case "teleport":
 		serveTeleport()
+	case "teleports":
+		serveTeleports()
 	default:
-		log.Fatalf("unknown -inType=%q. Supported values are: http, https, unix and teleport", *inType)
+		log.Fatalf("unknown -inType=%q. Supported values are: http, https, unix, teleport, teleports", *inType)
 	}
 }
 
@@ -191,7 +194,11 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 	for i := 0; i < *outConnsPerAddr; i++ {
 		upstreamClients = append(upstreamClients, cs...)
 	}
-	log.Printf("forwarding requests to httpteleport servers at %q", outs)
+	secureStr := ""
+	if isTLS {
+		secureStr = "encrypted "
+	}
+	log.Printf("forwarding %srequests to httpteleport servers at %q", secureStr, outs)
 }
 
 func compressType(ct, name string) httpteleport.CompressType {
@@ -277,9 +284,17 @@ func serveUnix() {
 }
 
 func serveTeleport() {
+	serveTeleportExt(false)
+}
+
+func serveTeleports() {
+	serveTeleportExt(true)
+}
+
+func serveTeleportExt(isTLS bool) {
 	ln := newTCPListener()
 	var tlsConfig *tls.Config
-	if len(*inTLSCert) > 0 {
+	if isTLS {
 		tlsConfig = newInTLSConfig()
 	}
 	inCompressType := compressType(*inCompress, "inCompress")
@@ -294,7 +309,11 @@ func serveTeleport() {
 		CompressType:      inCompressType,
 	}
 
-	log.Printf("listening for httpteleport connections on %q", *in)
+	secureStr := ""
+	if isTLS {
+		secureStr = "encrypted "
+	}
+	log.Printf("listening for %shttpteleport connections on %q", secureStr, *in)
 	if err := s.Serve(ln); err != nil {
 		log.Fatalf("error in fasthttp server: %s", err)
 	}
