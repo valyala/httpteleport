@@ -59,6 +59,7 @@ var (
 		"\tflate - requests are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - requests are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
+	outTimeout      = flag.Duration("outTimeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
 	outConnsPerAddr = flag.Int("outConnsPerAddr", 1, "How many connections must be established per each -out server if -outType=teleport.\n"+
 		"\tUsually a single connection is enough. Increase this value if the compression\n"+
 		"\ton the connection occupies 100% of a single CPU core.\n"+
@@ -66,7 +67,6 @@ var (
 
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process.\n"+
 		"\tThis also limits the maximum number of open connections per -out address if -outType=http")
-	timeout       = flag.Duration("timeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
 	xForwardedFor = flag.Bool("xForwardedFor", false, "Whether to set client's ip in X-Forwarded-For request header for outgoing requests")
 )
 
@@ -220,8 +220,8 @@ func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int, isTLS 
 		Addr:         addr,
 		Dial:         newExpvarDial(dial),
 		MaxConns:     connsPerAddr,
-		ReadTimeout:  *timeout * 5,
-		WriteTimeout: *timeout,
+		ReadTimeout:  *outTimeout * 5,
+		WriteTimeout: *outTimeout,
 	}
 	if isTLS {
 		serverName, _, err := net.SplitHostPort(addr)
@@ -368,7 +368,7 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	c := leastLoadedClient()
-	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
+	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
 		if ctx.Response.StatusCode() != fasthttp.StatusOK {
@@ -395,7 +395,7 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	ctx.Request.Header.ResetConnectionClose()
 
 	c := leastLoadedClient()
-	err := c.DoTimeout(&ctx.Request, &ctx.Response, *timeout)
+	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
 		if ctx.Response.StatusCode() != fasthttp.StatusOK {
