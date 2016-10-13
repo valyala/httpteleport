@@ -303,7 +303,7 @@ func (s *Server) connWriter(bw *bufio.Writer, conn net.Conn, pendingResponses <-
 		}
 
 		if _, err := bw.Write(wi.reqID[:]); err != nil {
-			return fmt.Errorf("cannot write response ID: %d", err)
+			return fmt.Errorf("cannot write response ID: %s", err)
 		}
 		if err := wi.ctx.Response.Write(bw); err != nil {
 			return fmt.Errorf("cannot write response: %s", err)
