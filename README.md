@@ -10,7 +10,8 @@ Teleports 10Gbps http traffic over 1Gbps networks.
 and costs for the following cases:
 
 - RTB servers.
-- HTTP-based API servers (aka REST and JSON services and microservices).
+- HTTP-based API servers (aka REST, JSON, JSON-RPC or HTTP-RPC services
+  and microservices).
 - Reverse proxies.
 - Load balancers.
 
