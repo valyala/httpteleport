@@ -16,7 +16,7 @@ const (
 	// DefaultMaxPendingRequests is the default number of pending requests
 	// a single Client may queue before sending them to the server.
 	//
-	// This parameter may be overriden by Client.MaxPendingRequests.
+	// This parameter may be overridden by Client.MaxPendingRequests.
 	DefaultMaxPendingRequests = 1000
 
 	// DefaultConcurrency is the default maximum number of concurrent
