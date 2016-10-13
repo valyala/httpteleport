@@ -36,8 +36,8 @@ type Client struct {
 	// TLSConfig is TLS (aka SSL) config used for establishing encrypted
 	// connection to the server.
 	//
-	// Encrypted connections may be used for tranferring sensitive
-	// information between datacenters.
+	// Encrypted connections may be used for transferring sensitive
+	// information over untrusted networks.
 	//
 	// By default connection to the server isn't encrypted.
 	TLSConfig *tls.Config

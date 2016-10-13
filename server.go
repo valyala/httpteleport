@@ -35,8 +35,8 @@ type Server struct {
 	// TLSConfig is TLS (aka SSL) config used for accepting encrypted
 	// client connections.
 	//
-	// Encrypted connections may be used for tranferring sensitive
-	// information between datacenters.
+	// Encrypted connections may be used for transferring sensitive
+	// information over untrusted networks.
 	//
 	// By default server accepts only unencrypted connections.
 	TLSConfig *tls.Config
@@ -47,7 +47,6 @@ type Server struct {
 	// Responses' batching may reduce network bandwidth usage and CPU usage.
 	//
 	// By default responses are sent immediately to the client.
-	// DefaultMaxBatchDelay is used by default.
 	MaxBatchDelay time.Duration
 
 	// Maximum duration for reading the full request (including body).

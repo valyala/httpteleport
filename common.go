@@ -58,7 +58,7 @@ const (
 	//     * If network bandwidth between client and server is limited.
 	//     * If client and server are located on distinct physical hosts.
 	//     * If both client and server have enough CPU resources
-	//       for compression.
+	//       for compression processing.
 	//
 	CompressFlate = CompressType(0)
 
@@ -67,7 +67,7 @@ const (
 	// CompressSnappy vs CompressFlate comparison:
 	//
 	//     * CompressSnappy consumes less CPU resources.
-	//     * compressSnappy consumes more network bandwidth.
+	//     * CompressSnappy consumes more network bandwidth.
 	//
 	CompressSnappy = CompressType(2)
 )
