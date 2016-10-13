@@ -36,8 +36,9 @@ This resolves [head of line blocking](https://en.wikipedia.org/wiki/Head-of-line
 * [Docs](https://godoc.org/github.com/valyala/httpteleport)
 
 * [httptp](https://github.com/valyala/httpteleport/tree/master/cmd/httptp) -
-  standalone single-binary single-binary reverse proxy and load balancer
-  based on `httpteleport`.
+  standalone single-binary reverse proxy and load balancer based
+  on `httpteleport`. `httptp` source code may be used as an example
+  of `httpteleport` usage.
 
 
 # FAQ
