@@ -44,6 +44,7 @@ This resolves [head of line blocking](https://en.wikipedia.org/wiki/Head-of-line
 # FAQ
 
 * Q: Why `httpteleport` doesn't use [HTTP/2.0](https://en.wikipedia.org/wiki/HTTP/2)?
+
   A: Because `http/2.0` has many features, which aren't used by `httpteleport`.
      More features complicate the code, make it more error-prone and may slow
      it down.
@@ -51,11 +52,15 @@ This resolves [head of line blocking](https://en.wikipedia.org/wiki/Head-of-line
 * Q: Why does `httpteleport` provide [fasthttp](https://github.com/valyala/fasthttp)-
      based API instead of standard [net/http](https://golang.org/pkg/net/http/)-
      based API?
+
   A: Because `httpteleport` is optimized for speed. So it have to use `fasthttp`
      for http-related stuff to be fast.
 
 * Q: Give me performance numbers.
-  A: `httpteleport` achieves 200K qps on a single CPU core:
+
+  A: `httpteleport` achieves 200K qps on a single CPU core in end-to-end test,
+     where a client sends requests to a local server and the server sends
+     responses back to the client:
 
   ```
 $ GOMAXPROCS=1 go test -bench=. -benchmem -benchtime=10s
