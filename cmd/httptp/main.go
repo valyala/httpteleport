@@ -66,7 +66,7 @@ var (
 		"\tAlternatively, -inCompress and/or -outCompress may be set to snappy or none in order to reduce CPU load")
 
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process.\n"+
-		"\tThis also limits the maximum number of open connections per -out address if -outType=http")
+		"\tThis also limits the maximum number of open connections per -out address if -outType=http or https")
 	xForwardedFor = flag.Bool("xForwardedFor", false, "Whether to set client's ip in X-Forwarded-For request header for outgoing requests")
 )
 
