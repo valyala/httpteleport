@@ -31,6 +31,8 @@ them to -out addresses. Each request is forwarded to the least loaded
 
   * May accept and/or forward http requests from/to unix sockets.
 
+  * Collects and exports various stats at /expvar page.
+
 
 # Usage
 
