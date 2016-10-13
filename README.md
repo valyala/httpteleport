@@ -1,6 +1,6 @@
-[![Build Status](https://travis-ci.org/valyala/httpteleport.svg)](https://travis-ci.org/valyala/fasthttp)
-[![GoDoc](https://godoc.org/github.com/valyala/httpteleport?status.svg)](http://godoc.org/github.com/valyala/fasthttp)
-[![Go Report](https://goreportcard.com/badge/github.com/valyala/httpteleport)](https://goreportcard.com/report/github.com/valyala/fasthttp)
+[![Build Status](https://travis-ci.org/valyala/httpteleport.svg)](https://travis-ci.org/valyala/httpteleport)
+[![GoDoc](https://godoc.org/github.com/valyala/httpteleport?status.svg)](http://godoc.org/github.com/valyala/httpteleport)
+[![Go Report](https://goreportcard.com/badge/github.com/valyala/httpteleport)](https://goreportcard.com/report/github.com/valyala/httpteleport)
 
 # httpteleport
 
