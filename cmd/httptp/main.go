@@ -127,7 +127,7 @@ func initHTTPClientsExt(outs []string, isTLS bool) {
 	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	for _, addr := range outs {
 		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr, isTLS)
-		upstreamClients = append(upstreamClients, c)
+		upstreamClients.Add(c)
 	}
 	tlsSuffix := ""
 	if isTLS {
@@ -141,7 +141,7 @@ func initUnixClients(outs []string) {
 	for _, addr := range outs {
 		verifyUnixAddr(addr)
 		c := newHTTPClient(dialUnix, addr, connsPerAddr, false)
-		upstreamClients = append(upstreamClients, c)
+		upstreamClients.Add(c)
 	}
 	log.Printf("forwarding requests to http servers at unix:%q", outs)
 }
@@ -169,7 +169,7 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 	concurrencyPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	concurrencyPerAddr = (concurrencyPerAddr + *outConnsPerAddr - 1) / *outConnsPerAddr
 	outCompressType := compressType(*outCompress, "outCompress")
-	var cs []client
+	var cs lbClients
 	for _, addr := range outs {
 		c := &httpteleport.Client{
 			Addr:               addr,
@@ -189,10 +189,10 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 				ServerName: serverName,
 			}
 		}
-		cs = append(cs, c)
+		cs.Add(c)
 	}
 	for i := 0; i < *outConnsPerAddr; i++ {
-		upstreamClients = append(upstreamClients, cs...)
+		upstreamClients.AddMulti(cs)
 	}
 	secureStr := ""
 	if isTLS {
@@ -367,7 +367,7 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 		ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
 	}
 
-	c := leastLoadedClient()
+	c := upstreamClients.Get()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
@@ -394,7 +394,7 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	// from closing keep-alive connections to -out servers.
 	ctx.Request.Header.ResetConnectionClose()
 
-	c := leastLoadedClient()
+	c := upstreamClients.Get()
 	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
@@ -415,31 +415,7 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-type client interface {
-	DoTimeout(req *fasthttp.Request, resp *fasthttp.Response, timeout time.Duration) error
-	PendingRequests() int
-}
-
-var upstreamClients []client
-
-func leastLoadedClient() client {
-	minC := upstreamClients[0]
-	minN := minC.PendingRequests()
-	if minN == 0 {
-		return minC
-	}
-	for _, c := range upstreamClients[1:] {
-		n := c.PendingRequests()
-		if n == 0 {
-			return c
-		}
-		if n < minN {
-			minC = c
-			minN = n
-		}
-	}
-	return minC
-}
+var upstreamClients lbClients
 
 func newInTLSConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
