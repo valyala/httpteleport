@@ -125,10 +125,12 @@ func initHTTPSClients(outs []string) {
 
 func initHTTPClientsExt(outs []string, isTLS bool) {
 	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
+	var cc []fasthttp.BalancingClient
 	for _, addr := range outs {
 		c := newHTTPClient(fasthttp.Dial, addr, connsPerAddr, isTLS)
-		upstreamClients.Add(c)
+		cc = append(cc, c)
 	}
+	upstreamClients.Clients = cc
 	tlsSuffix := ""
 	if isTLS {
 		tlsSuffix = "s"
@@ -138,11 +140,13 @@ func initHTTPClientsExt(outs []string, isTLS bool) {
 
 func initUnixClients(outs []string) {
 	connsPerAddr := (*concurrency + len(outs) - 1) / len(outs)
+	var cc []fasthttp.BalancingClient
 	for _, addr := range outs {
 		verifyUnixAddr(addr)
 		c := newHTTPClient(dialUnix, addr, connsPerAddr, false)
-		upstreamClients.Add(c)
+		cc = append(cc, c)
 	}
+	upstreamClients.Clients = cc
 	log.Printf("forwarding requests to http servers at unix:%q", outs)
 }
 
@@ -169,7 +173,7 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 	concurrencyPerAddr := (*concurrency + len(outs) - 1) / len(outs)
 	concurrencyPerAddr = (concurrencyPerAddr + *outConnsPerAddr - 1) / *outConnsPerAddr
 	outCompressType := compressType(*outCompress, "outCompress")
-	var cs lbClients
+	var cc []fasthttp.BalancingClient
 	for _, addr := range outs {
 		c := &httpteleport.Client{
 			Addr:               addr,
@@ -189,11 +193,14 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 				ServerName: serverName,
 			}
 		}
-		cs.Add(c)
+		cc = append(cc, c)
 	}
+
+	var cs []fasthttp.BalancingClient
 	for i := 0; i < *outConnsPerAddr; i++ {
-		upstreamClients.AddMulti(cs)
+		cs = append(cs, cc...)
 	}
+	upstreamClients.Clients = cs
 	secureStr := ""
 	if isTLS {
 		secureStr = "encrypted "
@@ -215,7 +222,7 @@ func compressType(ct, name string) httpteleport.CompressType {
 	panic("unreached")
 }
 
-func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int, isTLS bool) client {
+func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int, isTLS bool) fasthttp.BalancingClient {
 	c := &fasthttp.HostClient{
 		Addr:         addr,
 		Dial:         newExpvarDial(dial),
@@ -367,8 +374,7 @@ func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 		ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
 	}
 
-	c := upstreamClients.Get()
-	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
+	err := upstreamClients.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
 		if ctx.Response.StatusCode() != fasthttp.StatusOK {
@@ -394,8 +400,7 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	// from closing keep-alive connections to -out servers.
 	ctx.Request.Header.ResetConnectionClose()
 
-	c := upstreamClients.Get()
-	err := c.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
+	err := upstreamClients.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
 	if err == nil {
 		inRequestSuccess.Add(1)
 		if ctx.Response.StatusCode() != fasthttp.StatusOK {
@@ -415,7 +420,7 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-var upstreamClients lbClients
+var upstreamClients fasthttp.LBClient
 
 func newInTLSConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
