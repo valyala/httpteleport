@@ -80,7 +80,7 @@ type Server struct {
 	// Logger, which is used by RequestCtx.Logger().
 	//
 	// Standard logger from log package is used by default.
-	Logger Logger
+	Logger fasthttp.Logger
 
 	workItemPool sync.Pool
 
@@ -350,15 +350,9 @@ func (s *Server) releaseWorkItem(wi *serverWorkItem) {
 	s.workItemPool.Put(wi)
 }
 
-// Logger is used for logging formatted messages.
-type Logger interface {
-	// Printf must have the same semantics as log.Printf.
-	Printf(format string, args ...interface{})
-}
+var defaultLogger = log.New(os.Stderr, "", log.LstdFlags)
 
-var defaultLogger = Logger(log.New(os.Stderr, "", log.LstdFlags))
-
-func (s *Server) logger() Logger {
+func (s *Server) logger() fasthttp.Logger {
 	if s.Logger != nil {
 		return s.Logger
 	}
