@@ -237,6 +237,9 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			if wi.ctx.IsBodyStream() {
 				panic("chunked responses aren't supported")
 			}
+			if wi.ctx.Hijacked() {
+				panic("hijacking isn't supported")
+			}
 
 			// Request is no longer needed, so reset it in order
 			// to free up resources occupied by the request.
