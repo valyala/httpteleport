@@ -19,6 +19,11 @@ import (
 // Server is a server accepting requests from httpteleport Client.
 type Server struct {
 	// Handler must process incoming http requests.
+	//
+	// Handler mustn't use the following features:
+	//
+	//   - Connection hijacking, i.e. RequestCtx.Hijack
+	//   - Streamed response bodies, i.e. RequestCtx.*BodyStream*
 	Handler fasthttp.RequestHandler
 
 	// CompressType is the compression type used for responses.
@@ -184,6 +189,7 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 	var lastReadDeadline time.Time
 	for {
 		wi := s.acquireWorkItem()
+		ctx := &wi.ctx
 
 		if readTimeout > 0 {
 			// Optimization: update read deadline only if more than 25%
@@ -207,9 +213,9 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			return fmt.Errorf("cannot read request ID: %s", err)
 		}
 
-		wi.ctx.Init2(conn, logger, reduceMemoryUsage)
+		ctx.Init2(conn, logger, reduceMemoryUsage)
 
-		if err := wi.ctx.Request.Read(br); err != nil {
+		if err := ctx.Request.Read(br); err != nil {
 			return fmt.Errorf("cannot read request: %s", err)
 		}
 
@@ -217,8 +223,8 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 		if n > concurrency {
 			atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
 
-			fmt.Fprintf(&wi.ctx, "concurrency limit exceeded: %d. Increase Server.Concurrency or decrease load on the server", concurrency)
-			wi.ctx.SetStatusCode(fasthttp.StatusTooManyRequests)
+			fmt.Fprintf(ctx, "concurrency limit exceeded: %d. Increase Server.Concurrency or decrease load on the server", concurrency)
+			ctx.SetStatusCode(fasthttp.StatusTooManyRequests)
 
 			select {
 			case pendingResponses <- wi:
@@ -233,17 +239,27 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 		}
 
 		go func() {
-			handler(&wi.ctx)
-			if wi.ctx.IsBodyStream() {
+			handler(ctx)
+			if ctx.IsBodyStream() {
 				panic("chunked responses aren't supported")
 			}
-			if wi.ctx.Hijacked() {
+			if ctx.Hijacked() {
 				panic("hijacking isn't supported")
+			}
+			timeoutResp := ctx.LastTimeoutErrorResponse()
+			if timeoutResp != nil {
+				// The current ctx may be still in use by the handler.
+				// So create new one for passing to pendingResponses.
+				reqID := wi.reqID
+				wi = s.acquireWorkItem()
+				ctx = &wi.ctx
+				timeoutResp.CopyTo(&wi.ctx.Response)
+				wi.reqID = reqID
 			}
 
 			// Request is no longer needed, so reset it in order
 			// to free up resources occupied by the request.
-			wi.ctx.Request.Reset()
+			ctx.Request.Reset()
 
 			select {
 			case pendingResponses <- wi:

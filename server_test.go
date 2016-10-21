@@ -182,6 +182,30 @@ func TestServerTLSConcurrent(t *testing.T) {
 	}
 }
 
+func TestServerTimeoutErrorSerial(t *testing.T) {
+	serverStop, c := newTestServerClient(testTimeoutErrorHandler)
+
+	if err := testTimeoutError(c); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
+func TestServerTimeoutErrorConcurrent(t *testing.T) {
+	serverStop, c := newTestServerClient(testTimeoutErrorHandler)
+
+	if err := testServerClientConcurrent(func() error { return testTimeoutError(c) }); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if err := serverStop(); err != nil {
+		t.Fatalf("cannot shutdown server: %s", err)
+	}
+}
+
 func TestServerTimeoutSerial(t *testing.T) {
 	stopCh := make(chan struct{})
 	h := func(ctx *fasthttp.RequestCtx) {
@@ -724,6 +748,29 @@ func testTimeout(c *Client) error {
 	return nil
 }
 
+func testTimeoutError(c *Client) error {
+	var (
+		req  fasthttp.Request
+		resp fasthttp.Response
+	)
+	for i := 0; i < 10; i++ {
+		req.SetRequestURI("http://foobar.com/aaa")
+		err := c.DoTimeout(&req, &resp, 100*time.Millisecond)
+		if err != nil {
+			return fmt.Errorf("unexpected error on iteration %d: %s", i, err)
+		}
+		statusCode := resp.StatusCode()
+		if statusCode != fasthttp.StatusRequestTimeout {
+			return fmt.Errorf("unexpected status code on iteration %d: %d. Expecting %d", i, statusCode, fasthttp.StatusRequestTimeout)
+		}
+		body := resp.Body()
+		if string(body) != "timeout!" {
+			return fmt.Errorf("unexpected body on iteration %d: %q. Expecting %q", i, body, "timeout!")
+		}
+	}
+	return nil
+}
+
 func newTestServerClient(handler fasthttp.RequestHandler) (func() error, *Client) {
 	serverStop, ln := newTestServer(handler)
 	c := newTestClient(ln)
@@ -771,6 +818,11 @@ func newTestClient(ln *fasthttputil.InmemoryListener) *Client {
 		},
 	}
 }
+
+var testTimeoutErrorHandler = fasthttp.TimeoutHandler(func(ctx *fasthttp.RequestCtx) {
+	time.Sleep(10 * time.Millisecond)
+	ctx.WriteString("this should be ignored due to timeout")
+}, time.Millisecond, "timeout!")
 
 func testGetHandler(ctx *fasthttp.RequestCtx) {
 	host := ctx.Host()
