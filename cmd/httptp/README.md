@@ -59,7 +59,7 @@ httptp -help
 
 # Examples
 
-## Decreasing network bandwidth between datacenters
+## Reducing network bandwidth between datacenters
 
 Suppose you have an RTB partner sending you 50K requests per second.
 Each RTB request contains ~2Kb JSON body according to [RTB spec](https://www.iab.com/guidelines/real-time-bidding-rtb-project/).
@@ -67,7 +67,7 @@ Each RTB request contains ~2Kb JSON body according to [RTB spec](https://www.iab
 the partner and you. In reality the required network bandwidth exceeds
 1Gbps due to network protocols overhead. This may be quite expensive
 if your servers and partner servers are located in distinct datacenters.
-This alow may be limiting factor for growth.
+This may be limiting factor for growth.
 
 Let's decrease the required network bandwidth and the corresponding expenses
 by 10x with `httptp`!
@@ -94,7 +94,7 @@ server {
 }
 ```
 
-Then start `httptp` listening port `9876` on the same machine:
+Then start `httptp` on port `9876` on the same machine:
 
 ```
 httptp -inType=teleport -in=69.69.69.69:9876 -outType=http -out=rtb-server1:80,rtb-server2:80,rtb-server3:80
@@ -118,7 +118,7 @@ So the partner may send 10x more RTB requests to you. This may allow you and
 your partner earning more money :)
 
 
-## Decreasing network bandwidth in local networks
+## Reducing network bandwidth in local networks
 
 The previous example decreased inter-datacenter network traffic.
 But the amount of local traffic between `httptp` and worker servers didn't
@@ -141,7 +141,7 @@ bandwidth between his servers and `httptp` running at `10.10.10.10:6789`
 in his local network.
 
 This issue is easily solved - just run `httptp` on each of the server,
-so it bypasses the local `httptp` at `10.10.10.10:6789' and routes
+so it bypasses the local `httptp` at `10.10.10.10:6789` and routes
 the traffic directly to our `httptp` at `69.69.69.69:9876`:
 
 ```
