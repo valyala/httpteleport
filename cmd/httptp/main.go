@@ -67,7 +67,8 @@ var (
 
 	concurrency = flag.Int("concurrency", 100000, "The maximum number of concurrent requests httptp may process.\n"+
 		"\tThis also limits the maximum number of open connections per -out address if -outType=http or https")
-	xForwardedFor = flag.Bool("xForwardedFor", false, "Whether to set client's ip in X-Forwarded-For request header for outgoing requests")
+	clientIPHeader = flag.String("clientIPHeader", "", "HTTP request header for sending the original client ip.\n"+
+		"\tFor instance, -clientIPHeader=X-Forwarded-For. Empty -clientIPHeader disables sending client ip in request headers")
 )
 
 func main() {
@@ -368,10 +369,10 @@ var (
 
 func httpRequestHandler(ctx *fasthttp.RequestCtx) {
 	inRequestStart.Add(1)
-	if *xForwardedFor {
+	if len(*clientIPHeader) > 0 {
 		var buf [16]byte
 		ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
-		ctx.Request.Header.SetBytesV("X-Forwarded-For", ip)
+		ctx.Request.Header.SetBytesV(*clientIPHeader, ip)
 	}
 
 	err := upstreamClients.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
