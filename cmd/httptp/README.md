@@ -136,7 +136,7 @@ Then restart `httptp` on proxy server, so it would route traffic to just started
 httptp -inType=teleport -in=69.69.69.69:9876 -outType=teleport -out=rtb-server1:8345,rtb-server2:8345,rtb-server3:8345
 ```
 
-Great! What about the partner - it still requires a lot of internal network
+Great! What about the partner? It still requires a lot of internal network
 bandwidth between his servers and `httptp` running at `10.10.10.10:6789`
 in his local network.
 
