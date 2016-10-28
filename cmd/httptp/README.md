@@ -67,7 +67,7 @@ Each RTB request contains ~2Kb JSON body according to [RTB spec](https://www.iab
 the partner and you. In reality the required network bandwidth exceeds
 1Gbps due to network protocols overhead. This may be quite expensive
 if your servers and partner servers are located in distinct datacenters.
-This may be limiting factor for growth.
+This also may be limiting factor for growth.
 
 Let's decrease the required network bandwidth and the corresponding expenses
 by 10x with `httptp`!
@@ -108,7 +108,7 @@ RTB traffic to you:
 httptp -inType=http -in=10.10.10.10:6789 -outType=teleport -out=69.69.69.69:9876
 ```
 
-The the partner may send rtb traffic to `10.10.10.10:6789` in his local network.
+Then the partner may send rtb traffic to `10.10.10.10:6789` in his local network.
 This traffic will be compressed and proxied to `httptp` listening
 `69.69.69.69:9876` in your network. The `httptp` will spread the traffic across
 your worker servers set in the `-out` parameter: `rtb-server1:80,rtb-server2:80,rtb-server3:80`.
