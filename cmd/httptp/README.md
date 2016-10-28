@@ -35,7 +35,7 @@ Any highly loaded http-based API service and microservice may benefit from
 
   * Supports encrypted connections on both ends - incoming and outgoing.
 
-  * May substitute nginx in reverse proxy mode, load balancer mode and
+  * May substitute `nginx` in reverse proxy mode, load balancer mode and
     TLS offloading mode.
 
   * Automatically adjusts load to upstream servers:
@@ -163,7 +163,8 @@ Just run it on each of the worker server with the following options:
 httptp -inType=teleport -in=:8345 -outType=unix -out=/path/to/rtb/unix.socket
 ```
 
-RTB servers must accept http traffic from local unix socket `/path/to/rtb/unix.socket`.
+RTB servers must be able to accept http traffic from local unix socket
+`/path/to/rtb/unix.socket`.
 
 
 The same optimization applies to partner side:
@@ -175,10 +176,79 @@ httptp -inType=unix -in=/path/to/httptp/unix.socket -outType=teleport -out=69.69
 RTB servers must route http traffic to local unix socket `/path/to/httptp/unix.socket`.
 
 
+## Traffic encryption
+
+In the previous examples RTB traffic is passed unencrypted over public networks
+when traveling between you and the partner. Luckily `httptp` supports
+[TLS encryption](https://en.wikipedia.org/wiki/Transport_Layer_Security)
+out of the box - just use `teleports` traffic type instead of `teleport`.
+
+Run `httptp` with the following options on your proxy server:
+
+```
+httptp -inType=teleports -inTLSCert=/path/to/tls.cert -inTLSKey=/path/to/tls.key \
+	-in=69.69.69.69:4443 -outType=teleport -out=rtb-server1:8345,rtb-server2:8345,rtb-server3:8345
+```
+
+Note that you must have valid TLS certificate and key files for valid domain
+name pointing to ip `69.69.69.69`. Path to TLS ceritificate file is passed
+via `-inTLSCert`, path to TLS key file is passed via `-inTLSKey`.
+
+And ask your partner restarting `httptp` on each server with the following options:
+
+```
+httptp -inType=unix -in=/path/to/httptp/unix.socket -outType=teleports -out=domain-name-for.ip.69.69.69.69:4443
+```
+
+Where `domain-name-for.ip.69.69.69.69` is a domain name from your certificate.
+
+
+## Batching
+
+By default `httptp` forwards requests and responses immediately. This means that
+each request or response results in at least one network packet.
+Each network packet isn't free:
+
+  * It consumes additional CPU time.
+  * It consumes additional network resources.
+  * It contains a [header overhead](http://stackoverflow.com/questions/24879959/what-is-overhead-payload-and-header),
+    which may be quite big comparing to the request / response size.
+
+`httptp` allows sending multiple requests / responses in a single packet.
+This is called `batching`. Just set non-zero `-inDelay` and/or `-outDelay`
+when starting `httptp`.
+
+Beware of the following batching issues:
+
+  * Batching may introduce delays.
+  * Batching may be useful only for extremeley high load, i.e. thousands
+    of queries per second. Otherwise it is useless.
+
+
+## Compression
+
+By default `httptp` compresses both requests and responses. While compression
+saves network bandwidth, it isn't free - it consumes an additional CPU time.
+
+`httptp` supports the following compression levels independently for requests
+and responses via `-inCompress` and `-outCompress` options:
+
+  * none - compression is disabled
+  * [flate](https://en.wikipedia.org/wiki/DEFLATE) - default compression
+  * [snappy](https://en.wikipedia.org/wiki/Snappy_(compression)) - lightweight compression
+
+
 ## Advanced usage
 
+`httptp` features may be integrated directly into your services.
+Just integrate [httpteleport package](godoc.org/github.com/valyala/httpteleport)
+in clients and/or your application.
+This will eliminate `httptp` hops from the path
+`client <-> httptp <-> network <-> httptp <-> your application`,
+saving network and CPU resources.
 
-`httptp -help` contains a lot of information regarding advanced usage:
+`httptp` contains other configuration options for advanced usage.
+See `httptp -help` for more details:
 
 ```
 $ httptp -help
