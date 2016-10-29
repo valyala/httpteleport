@@ -244,7 +244,7 @@ and responses via `-inCompress` and `-outCompress` options:
   * [snappy](https://en.wikipedia.org/wiki/Snappy_(compression)) - lightweight compression
 
 
-# HTTP load balancing
+## HTTP load balancing
 
 The following command starts `httptp` accepting http requests at port 80
 and forwarding them to three worker nodes listed in the `-out` option:
@@ -254,7 +254,7 @@ httptp -inType=http -in=:80 -outType=http -out=node1:8080,node2:8080,node3:8080
 ```
 
 
-# TLS offloading
+## TLS offloading
 
 The following command starts `httptp` accepting https requests at port 443
 and forwarding them unencrypted to the given `-out` worker worker nodes:
