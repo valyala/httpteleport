@@ -19,7 +19,9 @@ Any highly loaded http-based API service and microservice may benefit from
   * Easy to use and configure - just run a single `httptp` binary with required
     command-line options.
 
-  * Fast. It is based on [fasthttp](https://github.com/valyala/fasthttp).
+  * Easy integration with the existing HTTP-based API services.
+
+  * `httptp` is fast. It is based on [fasthttp](https://github.com/valyala/fasthttp).
     Easily handles more than 100K qps.
 
   * May reduce required network bandwidth between servers by up to 10x. I.e.:
