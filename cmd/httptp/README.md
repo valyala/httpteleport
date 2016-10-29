@@ -1,7 +1,7 @@
 # httptp
 
-`httptp` is an http(s) proxy and load balancer built on top of
-[httpteleport](https://github.com/valyala/httpteleport).
+`httptp` is an http(s) proxy and load balancer that saves network bandwidth.
+It is built on top of [httpteleport](https://github.com/valyala/httpteleport).
 It accepts incoming requests at `-in` address and forwards them to `-out` addresses.
 Each request is forwarded to the least loaded healthy `-out` address.
 
@@ -53,6 +53,10 @@ Any highly loaded http-based API service and microservice may benefit from
   * May accept and/or forward http requests from/to unix sockets.
 
   * Collects and exports various stats at /expvar page.
+
+  * Easy to extend and customize. `httptp` is open source written in [Go](https://golang.org/).
+    It is released under [MIT license](https://github.com/valyala/httpteleport/blob/master/cmd/httptp/LICENSE),
+    so it may be easily customized and extended.
 
 
 # Usage
@@ -242,6 +246,19 @@ and responses via `-inCompress` and `-outCompress` options:
   * none - compression is disabled
   * [flate](https://en.wikipedia.org/wiki/DEFLATE) - default compression
   * [snappy](https://en.wikipedia.org/wiki/Snappy_(compression)) - lightweight compression
+
+
+## Restricting access to `httptp`
+
+`httptp` running on your proxy node `69.69.69.69` in examples above accepts
+incoming connections from any IP address. I.e. anybody across the internet
+may send requests to it. `httptp` supports restricting access only
+to the given IP list - just pass allowed IPs to `-inAllowIP` option:
+
+```
+httptp -inType=teleport -in=69.69.69.69:9876 -inAllowIP=partner-ip1,partner-ip2 \
+	-outType=teleport -out=rtb-server1:8345,rtb-server2:8345,rtb-server3:8345
+```
 
 
 ## HTTP load balancing
