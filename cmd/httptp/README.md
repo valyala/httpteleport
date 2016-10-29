@@ -20,7 +20,7 @@ Any highly loaded http-based API service and microservice may benefit from
     command-line options.
 
   * Fast. It is based on [fasthttp](https://github.com/valyala/fasthttp).
-    Easily handles 100K qps and over.
+    Easily handles more than 100K qps.
 
   * May reduce required network bandwidth between servers by up to 10x. I.e.:
 
@@ -37,7 +37,7 @@ Any highly loaded http-based API service and microservice may benefit from
 
   * [HTTP keep-alive connections](https://en.wikipedia.org/wiki/HTTP_persistent_connection)
     are used by default on both `-in` and `-out` ends. `httptp` easily handles
-    millions of incoming concurrent keep-alive connections.
+    more than 100K of incoming concurrent keep-alive connections.
 
   * May substitute `nginx` in [reverse proxy](https://en.wikipedia.org/wiki/Reverse_proxy)
     mode, [load balancer](https://en.wikipedia.org/wiki/Load_balancing_(computing)) mode and
