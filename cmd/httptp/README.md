@@ -1,9 +1,9 @@
 # httptp
 
-`httptp` is an [httpteleport](https://github.com/valyala/httpteleport) proxy
-and load balancer, which accepts incoming requests at -in address and forwards
-them to -out addresses. Each request is forwarded to the least loaded healthy
--out address.
+`httptp` is an http(s) proxy and load balancer built on top of
+[httpteleport](https://github.com/valyala/httpteleport).
+It accepts incoming requests at `-in` address and forwards them to `-out` addresses.
+Each request is forwarded to the least loaded healthy `-out` address.
 
 Any highly loaded http-based API service and microservice may benefit from
 `httptp` usage. Here are a few buzzwords related to such services:
@@ -33,10 +33,15 @@ Any highly loaded http-based API service and microservice may benefit from
     * Save a lot of money for expensive inter-datacenter traffic.
     * Free internal network bandwidth for other services.
 
-  * Supports encrypted connections on both ends - incoming and outgoing.
+  * Supports encrypted connections on both `-in` and `-out` ends.
 
-  * May substitute `nginx` in reverse proxy mode, load balancer mode and
-    TLS offloading mode.
+  * [HTTP keep-alive connections](https://en.wikipedia.org/wiki/HTTP_persistent_connection)
+    are used by default on both `-in` and `-out` ends. `httptp` easily handles
+    millions of incoming concurrent keep-alive connections.
+
+  * May substitute `nginx` in [reverse proxy](https://en.wikipedia.org/wiki/Reverse_proxy)
+    mode, [load balancer](https://en.wikipedia.org/wiki/Load_balancing_(computing)) mode and
+    [TLS offloading](https://www.nginx.com/blog/nginx-ssl/) mode.
 
   * Automatically adjusts load to upstream servers:
 
@@ -58,6 +63,7 @@ httptp -help
 ```
 
 # Examples
+
 
 ## Reducing network bandwidth between datacenters
 
@@ -238,11 +244,31 @@ and responses via `-inCompress` and `-outCompress` options:
   * [snappy](https://en.wikipedia.org/wiki/Snappy_(compression)) - lightweight compression
 
 
+# HTTP load balancing
+
+The following command starts `httptp` accepting http requests at port 80
+and forwarding them to three worker nodes listed in the `-out` option:
+
+```
+httptp -inType=http -in=:80 -outType=http -out=node1:8080,node2:8080,node3:8080
+```
+
+
+# TLS offloading
+
+The following command starts `httptp` accepting https requests at port 443
+and forwarding them unencrypted to the given `-out` worker worker nodes:
+
+```
+httptp -inType=https -inTLSCert=/path/to/tls.cert -inTLSKey=/path/to/tls.key \
+	-in=:443 -outType=http -out=node1:8080,node2:8080,node3:8080
+```
+
 ## Advanced usage
 
 `httptp` features may be integrated directly into your services.
-Just integrate [httpteleport package](godoc.org/github.com/valyala/httpteleport)
-in clients and/or your application.
+Just use [httpteleport package](https://godoc.org/github.com/valyala/httpteleport)
+in your clients and/or applications.
 This will eliminate `httptp` hops from the path
 `client <-> httptp <-> network <-> httptp <-> your application`,
 saving network and CPU resources.
