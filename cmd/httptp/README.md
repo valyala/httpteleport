@@ -291,7 +291,7 @@ Just use [httpteleport package](https://godoc.org/github.com/valyala/httptelepor
 in your clients and/or applications.
 This will eliminate `httptp` hops from the path
 `client <-> httptp <-> network <-> httptp <-> your application`,
-saving network and CPU resources.
+thus saving network and CPU resources.
 
 `httptp` contains other configuration options for advanced usage.
 See `httptp -help` for more details:
