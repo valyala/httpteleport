@@ -54,7 +54,8 @@ Any highly loaded http-based API service and microservice may benefit from
 
   * Collects and exports various stats at /expvar page.
 
-  * Easy to extend and customize. `httptp` is open source written in [Go](https://golang.org/).
+  * Easy to extend and customize. `httptp` is open source software written
+    in [Go](https://golang.org/) - easy to read and hack language.
     It is released under [MIT license](https://github.com/valyala/httpteleport/blob/master/cmd/httptp/LICENSE),
     so it may be easily customized and extended.
 
