@@ -257,7 +257,7 @@ httptp -inType=http -in=:80 -outType=http -out=node1:8080,node2:8080,node3:8080
 ## TLS offloading
 
 The following command starts `httptp` accepting https requests at port 443
-and forwarding them unencrypted to the given `-out` worker worker nodes:
+and forwarding them unencrypted to the given `-out` worker nodes:
 
 ```
 httptp -inType=https -inTLSCert=/path/to/tls.cert -inTLSKey=/path/to/tls.key \
