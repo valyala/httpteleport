@@ -224,6 +224,8 @@ Each network packet isn't free:
   * It consumes additional network resources.
   * It contains a [header overhead](http://stackoverflow.com/questions/24879959/what-is-overhead-payload-and-header),
     which may be quite big comparing to the request / response size.
+  * It may hurt compression - multiple requests / responses are usually
+    compressed better than a single request / response.
 
 `httptp` allows sending multiple requests / responses in a single packet.
 This is called `batching`. Just set non-zero `-inDelay` and/or `-outDelay`
@@ -232,8 +234,8 @@ when starting `httptp`.
 Beware of the following batching issues:
 
   * Batching may introduce delays.
-  * Batching may be useful only for extremeley high load, i.e. thousands
-    of queries per second. Otherwise it is useless.
+  * Batching may be useful only for high load, i.e. at least thousands
+    of requests per second. Otherwise it is useless.
 
 
 ## Compression
