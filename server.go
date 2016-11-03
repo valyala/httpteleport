@@ -238,7 +238,8 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			continue
 		}
 
-		go func() {
+		go func(wi *serverWorkItem) {
+			ctx := &wi.ctx
 			handler(ctx)
 			if ctx.IsBodyStream() {
 				panic("chunked responses aren't supported")
@@ -271,7 +272,7 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			}
 
 			atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
-		}()
+		}(wi)
 	}
 }
 
