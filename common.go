@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"github.com/golang/snappy"
+	"github.com/valyala/fasthttp/stackless"
 	"io"
 	"net"
 	"time"
@@ -99,16 +100,21 @@ func newBufioConn(conn net.Conn, readBufferSize, writeBufferSize int,
 	switch writeCompressType {
 	case CompressNone:
 	case CompressFlate:
-		zw, err := flate.NewWriter(w, flate.DefaultCompression)
-		if err != nil {
-			panic(fmt.Sprintf("BUG: flate.NewWriter(%d) returned non-nil err: %s", flate.DefaultCompression, err))
-		}
-		w = &writeFlusher{w: zw}
+		sw := stackless.NewWriter(w, func(w io.Writer) stackless.Writer {
+			zw, err := flate.NewWriter(w, flate.DefaultCompression)
+			if err != nil {
+				panic(fmt.Sprintf("BUG: flate.NewWriter(%d) returned non-nil err: %s", flate.DefaultCompression, err))
+			}
+			return zw
+		})
+		w = &writeFlusher{w: sw}
 	case CompressSnappy:
 		// From the docs at https://godoc.org/github.com/golang/snappy#NewWriter :
 		// There is no need to Flush or Close such a Writer,
 		// so don't wrap it into writeFlusher.
-		w = snappy.NewWriter(w)
+		w = stackless.NewWriter(w, func(w io.Writer) stackless.Writer {
+			return snappy.NewWriter(w)
+		})
 	default:
 		return nil, nil, fmt.Errorf("unknown write CompressType: %v", writeCompressType)
 	}
@@ -235,7 +241,7 @@ var sniffHeader = []byte("httpteleport")
 var zeroTime time.Time
 
 type writeFlusher struct {
-	w *flate.Writer
+	w stackless.Writer
 }
 
 func (wf *writeFlusher) Write(p []byte) (int, error) {
