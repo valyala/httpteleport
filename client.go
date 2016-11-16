@@ -319,10 +319,12 @@ func (c *Client) connWriter(bw *bufio.Writer, conn net.Conn, stopCh <-chan struc
 	)
 
 	var (
-		flushTimer    = time.NewTimer(time.Hour * 24 * 30)
+		flushTimer    = getFlushTimer()
 		flushCh       <-chan time.Time
 		flushAlwaysCh = make(chan time.Time)
 	)
+	defer putFlushTimer(flushTimer)
+
 	close(flushAlwaysCh)
 	maxBatchDelay := c.MaxBatchDelay
 	if maxBatchDelay < 0 {
@@ -396,13 +398,7 @@ func (c *Client) connWriter(bw *bufio.Writer, conn net.Conn, stopCh <-chan struc
 		// re-arm flush channel
 		if len(c.pendingRequests) == 0 {
 			if maxBatchDelay > 0 {
-				if !flushTimer.Stop() {
-					select {
-					case <-flushTimer.C:
-					default:
-					}
-				}
-				flushTimer.Reset(maxBatchDelay)
+				resetFlushTimer(flushTimer, maxBatchDelay)
 				flushCh = flushTimer.C
 			} else {
 				flushCh = flushAlwaysCh

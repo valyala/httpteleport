@@ -10,6 +10,7 @@ import (
 	"github.com/valyala/fasthttp/stackless"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -254,3 +255,34 @@ func (wf *writeFlusher) Write(p []byte) (int, error) {
 	}
 	return n, nil
 }
+
+func getFlushTimer() *time.Timer {
+	v := flushTimerPool.Get()
+	if v == nil {
+		return time.NewTimer(time.Hour * 24)
+	}
+	t := v.(*time.Timer)
+	resetFlushTimer(t, time.Hour*24)
+	return t
+}
+
+func putFlushTimer(t *time.Timer) {
+	stopFlushTimer(t)
+	flushTimerPool.Put(t)
+}
+
+func resetFlushTimer(t *time.Timer, d time.Duration) {
+	stopFlushTimer(t)
+	t.Reset(d)
+}
+
+func stopFlushTimer(t *time.Timer) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+}
+
+var flushTimerPool sync.Pool
