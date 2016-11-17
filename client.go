@@ -137,7 +137,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 	wi.req = req
 	wi.resp = resp
 	wi.deadline = deadline
-	if err := c.queueWorkItem(wi); err != nil {
+	if err := c.enqueueWorkItem(wi); err != nil {
 		atomic.AddUint32(&c.pendingRequestsCount, ^uint32(0))
 		releaseClientWorkItem(wi)
 		return c.getError(err)
@@ -156,7 +156,7 @@ func (c *Client) DoDeadline(req *fasthttp.Request, resp *fasthttp.Response, dead
 	return err
 }
 
-func (c *Client) queueWorkItem(wi *clientWorkItem) error {
+func (c *Client) enqueueWorkItem(wi *clientWorkItem) error {
 	select {
 	case c.pendingRequests <- wi:
 		return nil
@@ -224,7 +224,7 @@ func (c *Client) unblockStaleRequests() bool {
 				wi.done <- c.getError(ErrTimeout)
 				found = true
 			} else {
-				if err := c.queueWorkItem(wi); err != nil {
+				if err := c.enqueueWorkItem(wi); err != nil {
 					wi.done <- c.getError(err)
 				}
 			}
@@ -264,6 +264,12 @@ func (c *Client) worker() {
 		dial = fasthttp.Dial
 	}
 	for {
+		// Wait for the first request before dialing the server.
+		wi := <-c.pendingRequests
+		if err := c.enqueueWorkItem(wi); err != nil {
+			wi.done <- c.getError(err)
+		}
+
 		conn, err := dial(c.Addr)
 		if err != nil {
 			c.setLastError(fmt.Errorf("cannot connect to %q: %s", c.Addr, err))
