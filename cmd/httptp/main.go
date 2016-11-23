@@ -69,6 +69,8 @@ var (
 		"\tThis also limits the maximum number of open connections per -out address if -outType=http or https")
 	clientIPHeader = flag.String("clientIPHeader", "", "HTTP request header for sending the original client ip.\n"+
 		"\tFor instance, -clientIPHeader=X-Forwarded-For. Empty -clientIPHeader disables sending client ip in request headers")
+
+	logAllErrors = flag.Bool("logAllErrors", false, "Log all the error while serving clients. This option may be useful for debugging")
 )
 
 func main() {
@@ -353,6 +355,7 @@ func newHTTPServer() *fasthttp.Server {
 	return &fasthttp.Server{
 		Handler:           httpRequestHandler,
 		Concurrency:       *concurrency,
+		LogAllErrors:      *logAllErrors,
 		ReduceMemoryUsage: true,
 		ReadTimeout:       120 * time.Second,
 		WriteTimeout:      5 * time.Second,
