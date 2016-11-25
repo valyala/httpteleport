@@ -33,6 +33,7 @@ var (
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
+	inGetOnly       = flag.Bool("inGetOnly", false, "Accept only GET -in requests if set to true")
 	inMaxHeaderSize = flag.Int("inMaxHeaderSize", 4*1024, "Maximum header size for -in requests")
 	inMaxBodySize   = flag.Int("inMaxBodySize", fasthttp.DefaultMaxRequestBodySize, "Maximum body size for -in requests")
 	inAllowIP       = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
@@ -361,6 +362,7 @@ func newHTTPServer() *fasthttp.Server {
 		Concurrency:        *concurrency,
 		LogAllErrors:       *logAllErrors,
 		MaxRequestBodySize: *inMaxBodySize,
+		GetOnly:            *inGetOnly,
 		ReduceMemoryUsage:  true,
 		ReadTimeout:        120 * time.Second,
 		WriteTimeout:       5 * time.Second,
