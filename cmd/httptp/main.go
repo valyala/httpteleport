@@ -33,7 +33,8 @@ var (
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
-	inAllowIP = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
+	inMaxBodySize = flag.Int("inMaxBodySize", fasthttp.DefaultMaxRequestBodySize, "Maximum body size for -in requests")
+	inAllowIP     = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
 		"\tAll IP addresses are allowed if empty")
 	inTLSCert = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem",
 		"Path to TLS certificate file if -inType=https or teleports")
@@ -353,12 +354,13 @@ var allowedInIPs map[uint32]struct{}
 
 func newHTTPServer() *fasthttp.Server {
 	return &fasthttp.Server{
-		Handler:           httpRequestHandler,
-		Concurrency:       *concurrency,
-		LogAllErrors:      *logAllErrors,
-		ReduceMemoryUsage: true,
-		ReadTimeout:       120 * time.Second,
-		WriteTimeout:      5 * time.Second,
+		Handler:            httpRequestHandler,
+		Concurrency:        *concurrency,
+		LogAllErrors:       *logAllErrors,
+		MaxRequestBodySize: *inMaxBodySize,
+		ReduceMemoryUsage:  true,
+		ReadTimeout:        120 * time.Second,
+		WriteTimeout:       5 * time.Second,
 	}
 }
 
