@@ -371,35 +371,21 @@ var (
 )
 
 func httpRequestHandler(ctx *fasthttp.RequestCtx) {
-	inRequestStart.Add(1)
 	if len(*clientIPHeader) > 0 {
 		var buf [16]byte
 		ip := fasthttp.AppendIPv4(buf[:0], ctx.RemoteIP())
 		ctx.Request.Header.SetBytesV(*clientIPHeader, ip)
 	}
-
-	err := upstreamClients.DoTimeout(&ctx.Request, &ctx.Response, *outTimeout)
-	if err == nil {
-		inRequestSuccess.Add(1)
-		if ctx.Response.StatusCode() != fasthttp.StatusOK {
-			inRequestNon200.Add(1)
-		}
-		return
-	}
-
-	ctx.ResetBody()
-	fmt.Fprintf(ctx, "http proxying error: %s", err)
-	if err == fasthttp.ErrTimeout {
-		inRequestTimeoutError.Add(1)
-		ctx.SetStatusCode(fasthttp.StatusGatewayTimeout)
-	} else {
-		inRequestOtherError.Add(1)
-		ctx.SetStatusCode(fasthttp.StatusBadGateway)
-	}
+	commonRequestHandler("http", ctx)
 }
 
 func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
+	commonRequestHandler("httpteleport", ctx)
+}
+
+func commonRequestHandler(proxyType string, ctx *fasthttp.RequestCtx) {
 	inRequestStart.Add(1)
+
 	// Reset 'Connection: close' request header in order to prevent
 	// from closing keep-alive connections to -out servers.
 	ctx.Request.Header.ResetConnectionClose()
@@ -414,8 +400,8 @@ func httpteleportRequestHandler(ctx *fasthttp.RequestCtx) {
 	}
 
 	ctx.ResetBody()
-	fmt.Fprintf(ctx, "httpteleport proxying error: %s", err)
-	if err == httpteleport.ErrTimeout {
+	fmt.Fprintf(ctx, "%s proxying error: %s", proxyType, err)
+	if err == fasthttp.ErrTimeout {
 		inRequestTimeoutError.Add(1)
 		ctx.SetStatusCode(fasthttp.StatusGatewayTimeout)
 	} else {
