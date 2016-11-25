@@ -54,7 +54,7 @@ Any highly loaded http-based API service and microservice may benefit from
 
   * May accept and/or forward http requests from/to unix sockets.
 
-  * Collects and exports various stats at /expvar page.
+  * Collects and exports various stats at /expvar and /prometheus pages.
 
   * Easy to extend and customize. `httptp` is open source software written
     in [Go](https://golang.org/) - easy to read and hack language.
@@ -308,7 +308,10 @@ Usage of ./httptp:
     	The maximum number of concurrent requests httptp may process.
 	This also limits the maximum number of open connections per -out address if -outType=http or https (default 100000)
   -expvarAddr string
-    	TCP address for exporting httptp metrics. They are exported at http://expvarAddr/expvar page (default "localhost:8040")
+    	TCP address for exporting httptp metrics. They are exported at the following pages:
+	http://expvarAddr/expvar - in expvar format
+	http://expvarAddr/prometheus - in prometheus format
+ (default "localhost:8040")
   -in string
     	-inType address to listen to for incoming requests (default "127.0.0.1:8080")
   -inAllowIP string
@@ -322,6 +325,12 @@ Usage of ./httptp:
 	snappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage (default "flate")
   -inDelay duration
     	How long to wait before sending batched responses back if -inType=teleport
+  -inGetOnly
+    	Accept only GET -in requests if set to true
+  -inMaxBodySize int
+    	Maximum body size for -in requests (default 4194304)
+  -inMaxHeaderSize int
+    	Maximum header size for -in requests (default 4096)
   -inTLSCert string
     	Path to TLS certificate file if -inType=https or teleports (default "/etc/ssl/certs/ssl-cert-snakeoil.pem")
   -inTLSKey string
@@ -336,6 +345,8 @@ Usage of ./httptp:
 	unix - accept http requests over unix socket, e.g. -in=/var/httptp/sock.unix
 	teleport - accept httpteleport connections over TCP, e.g. -in=127.0.0.1:8043
 	teleports - accept httpteleport connections over encrypted TCP, e.g. -in=127.0.0.1:8443 (default "http")
+  -logAllErrors
+    	Log all the error while serving clients. This option may be useful for debugging
   -out string
     	Comma-separated list of -outType addresses to forward requests to.
 	Each request is forwarded to the least loaded address (default "127.0.0.1:8043")
@@ -352,6 +363,8 @@ Usage of ./httptp:
 	Alternatively, -inCompress and/or -outCompress may be set to snappy or none in order to reduce CPU load (default 1)
   -outDelay duration
     	How long to wait before forwarding incoming requests to -out if -outType=teleport
+  -outMaxHeaderSize int
+    	Maximum header size for -out responses (default 4096)
   -outTimeout duration
     	The maximum duration for waiting responses from -out server (default 3s)
   -outType string
@@ -360,8 +373,7 @@ Usage of ./httptp:
 	https - forward requests to https servers on TCP, e.g -out=127.0.0.1:443
 	unix - forward requests to http servers on unix socket, e.g. -out=/var/nginx/sock.unix
 	teleport - forward requests to httpteleport servers over TCP, e.g. -out=127.0.0.1:8043
-	tepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043.
-		Server must properly set -inTLS* flags in order to accept encrypted TCP connections (default "teleport")
+	tepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043. Server must properly set -inTLS* flags in order to accept encrypted TCP connections (default "teleport")
   -reusePort
     	Whether to enable SO_REUSEPORT on -in if -inType is http or teleport
 ```

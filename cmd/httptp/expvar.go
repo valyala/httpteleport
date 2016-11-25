@@ -3,6 +3,7 @@ package main
 import (
 	"expvar"
 	"flag"
+	"fmt"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/expvarhandler"
 	"log"
@@ -12,7 +13,9 @@ import (
 
 var (
 	expvarAddr = flag.String("expvarAddr", "localhost:8040", "TCP address for exporting httptp metrics. They are exported "+
-		"at http://expvarAddr/expvar page")
+		"at the following pages:\n"+
+		"\thttp://expvarAddr/expvar - in expvar format\n"+
+		"\thttp://expvarAddr/prometheus - in prometheus format\n")
 )
 
 func initExpvarServer() {
@@ -20,7 +23,7 @@ func initExpvarServer() {
 		return
 	}
 
-	log.Printf("exporting stats at http://%s/expvar", *expvarAddr)
+	log.Printf("exporting stats at http://%[1]s/expvar and http://%[1]s/prometheus", *expvarAddr)
 
 	go func() {
 		if err := fasthttp.ListenAndServe(*expvarAddr, expvarHandler); err != nil {
@@ -31,11 +34,24 @@ func initExpvarServer() {
 
 func expvarHandler(ctx *fasthttp.RequestCtx) {
 	path := ctx.Path()
-	if string(path) == "/expvar" {
+	switch string(path) {
+	case "/expvar":
 		expvarhandler.ExpvarHandler(ctx)
-	} else {
+	case "/prometheus":
+		prometheusHandler(ctx)
+	default:
 		ctx.Error("unsupported path", fasthttp.StatusBadRequest)
 	}
+}
+
+func prometheusHandler(ctx *fasthttp.RequestCtx) {
+	prometheusHandlerCalls.Add(1)
+	expvar.Do(func(kv expvar.KeyValue) {
+		if x, ok := kv.Value.(*expvar.Int); ok {
+			fmt.Fprintf(ctx, "# TYPE %s counter\n", kv.Key)
+			fmt.Fprintf(ctx, "%s %s\n", kv.Key, x)
+		}
+	})
 }
 
 func newExpvarDial(dial fasthttp.DialFunc) fasthttp.DialFunc {
@@ -112,6 +128,8 @@ var (
 	outReadError    = expvar.NewInt("outReadError")
 	outWriteCalls   = expvar.NewInt("outWriteCalls")
 	outReadCalls    = expvar.NewInt("outReadCalls")
+
+	prometheusHandlerCalls = expvar.NewInt("prometheusHandlerCalls")
 )
 
 type expvarListener struct {
