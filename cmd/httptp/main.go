@@ -190,6 +190,7 @@ func initTeleportClientsExt(outs []string, isTLS bool) {
 			ReadTimeout:        120 * time.Second,
 			WriteTimeout:       5 * time.Second,
 			CompressType:       outCompressType,
+			ReadBufferSize:     *outMaxHeaderSize,
 		}
 		if isTLS {
 			serverName, _, err := net.SplitHostPort(addr)
@@ -322,6 +323,7 @@ func serveTeleportExt(isTLS bool) {
 		ReadTimeout:       120 * time.Second,
 		WriteTimeout:      5 * time.Second,
 		CompressType:      inCompressType,
+		ReadBufferSize:    *inMaxHeaderSize,
 	}
 
 	secureStr := ""
