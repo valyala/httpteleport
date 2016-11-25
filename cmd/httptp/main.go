@@ -33,8 +33,9 @@ var (
 		"\tflate - responses are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - responses are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
-	inMaxBodySize = flag.Int("inMaxBodySize", fasthttp.DefaultMaxRequestBodySize, "Maximum body size for -in requests")
-	inAllowIP     = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
+	inMaxHeaderSize = flag.Int("inMaxHeaderSize", 4*1024, "Maximum header size for -in requests")
+	inMaxBodySize   = flag.Int("inMaxBodySize", fasthttp.DefaultMaxRequestBodySize, "Maximum body size for -in requests")
+	inAllowIP       = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
 		"\tAll IP addresses are allowed if empty")
 	inTLSCert = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem",
 		"Path to TLS certificate file if -inType=https or teleports")
@@ -60,8 +61,9 @@ var (
 		"\tflate - requests are compressed using flate algorithm. Low network bandwidth at the cost of high CPU usage\n"+
 		"\tsnappy - requests are compressed using snappy algorithm. Balance between network bandwidth and CPU usage")
 
-	outTimeout      = flag.Duration("outTimeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
-	outConnsPerAddr = flag.Int("outConnsPerAddr", 1, "How many connections must be established per each -out server if -outType=teleport.\n"+
+	outMaxHeaderSize = flag.Int("outMaxHeaderSize", 4*1024, "Maximum header size for -out responses")
+	outTimeout       = flag.Duration("outTimeout", 3*time.Second, "The maximum duration for waiting responses from -out server")
+	outConnsPerAddr  = flag.Int("outConnsPerAddr", 1, "How many connections must be established per each -out server if -outType=teleport.\n"+
 		"\tUsually a single connection is enough. Increase this value if the compression\n"+
 		"\ton the connection occupies 100% of a single CPU core.\n"+
 		"\tAlternatively, -inCompress and/or -outCompress may be set to snappy or none in order to reduce CPU load")
@@ -228,11 +230,12 @@ func compressType(ct, name string) httpteleport.CompressType {
 
 func newHTTPClient(dial fasthttp.DialFunc, addr string, connsPerAddr int, isTLS bool) fasthttp.BalancingClient {
 	c := &fasthttp.HostClient{
-		Addr:         addr,
-		Dial:         newExpvarDial(dial),
-		MaxConns:     connsPerAddr,
-		ReadTimeout:  *outTimeout * 5,
-		WriteTimeout: *outTimeout,
+		Addr:           addr,
+		Dial:           newExpvarDial(dial),
+		MaxConns:       connsPerAddr,
+		ReadTimeout:    *outTimeout * 5,
+		WriteTimeout:   *outTimeout,
+		ReadBufferSize: *outMaxHeaderSize,
 	}
 	if isTLS {
 		serverName, _, err := net.SplitHostPort(addr)
@@ -361,6 +364,7 @@ func newHTTPServer() *fasthttp.Server {
 		ReduceMemoryUsage:  true,
 		ReadTimeout:        120 * time.Second,
 		WriteTimeout:       5 * time.Second,
+		ReadBufferSize:     *inMaxHeaderSize,
 	}
 }
 
