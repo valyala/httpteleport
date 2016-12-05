@@ -87,6 +87,20 @@ type Server struct {
 	// Standard logger from log package is used by default.
 	Logger fasthttp.Logger
 
+	// PipelineRequests enables requests' pipelining.
+	//
+	// Requests from a single client are processed serially
+	// if is set to true.
+	//
+	// Enabling requests' pipelining may be useful in the following cases:
+	//
+	//   - if requests from a single client must be processed serially;
+	//   - if the Server.Handler doesn't block and maximum throughput
+	//     must be achieved for requests' processing.
+	//
+	// By default requests from a single client are processed concurrently.
+	PipelineRequests bool
+
 	workItemPool sync.Pool
 
 	concurrencyCount uint32
@@ -178,10 +192,6 @@ func (s *Server) serveConn(conn net.Conn) error {
 }
 
 func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses chan<- *serverWorkItem, stopCh <-chan struct{}) error {
-	handler := s.Handler
-	if handler == nil {
-		panic("BUG: Server.Handler must be set")
-	}
 	logger := s.logger()
 	concurrency := s.concurrency()
 	reduceMemoryUsage := s.ReduceMemoryUsage
@@ -226,54 +236,67 @@ func (s *Server) connReader(br *bufio.Reader, conn net.Conn, pendingResponses ch
 			fmt.Fprintf(ctx, "concurrency limit exceeded: %d. Increase Server.Concurrency or decrease load on the server", concurrency)
 			ctx.SetStatusCode(fasthttp.StatusTooManyRequests)
 
-			select {
-			case pendingResponses <- wi:
-			default:
-				select {
-				case pendingResponses <- wi:
-				case <-stopCh:
-					return nil
-				}
+			if !pushPendingResponse(pendingResponses, wi, stopCh) {
+				return nil
 			}
+
 			continue
 		}
 
-		go func(wi *serverWorkItem) {
-			ctx := &wi.ctx
-			handler(ctx)
-			if ctx.IsBodyStream() {
-				panic("chunked responses aren't supported")
-			}
-			if ctx.Hijacked() {
-				panic("hijacking isn't supported")
-			}
-			timeoutResp := ctx.LastTimeoutErrorResponse()
-			if timeoutResp != nil {
-				// The current ctx may be still in use by the handler.
-				// So create new one for passing to pendingResponses.
-				reqID := wi.reqID
-				wi = s.acquireWorkItem()
-				ctx = &wi.ctx
-				timeoutResp.CopyTo(&wi.ctx.Response)
-				wi.reqID = reqID
-			}
-
-			// Request is no longer needed, so reset it in order
-			// to free up resources occupied by the request.
-			ctx.Request.Reset()
-
-			select {
-			case pendingResponses <- wi:
-			default:
-				select {
-				case pendingResponses <- wi:
-				case <-stopCh:
-				}
-			}
-
+		if s.PipelineRequests {
+			s.handleRequest(wi, pendingResponses, stopCh)
 			atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
-		}(wi)
+		} else {
+			go func(wi *serverWorkItem) {
+				s.handleRequest(wi, pendingResponses, stopCh)
+				atomic.AddUint32(&s.concurrencyCount, ^uint32(0))
+			}(wi)
+		}
 	}
+}
+
+func (s *Server) handleRequest(wi *serverWorkItem, pendingResponses chan<- *serverWorkItem, stopCh <-chan struct{}) {
+	ctx := &wi.ctx
+	handler := s.Handler
+	if handler == nil {
+		panic("BUG: Server.Handler must be set")
+	}
+	handler(ctx)
+	if ctx.IsBodyStream() {
+		panic("chunked responses aren't supported")
+	}
+	if ctx.Hijacked() {
+		panic("hijacking isn't supported")
+	}
+	timeoutResp := ctx.LastTimeoutErrorResponse()
+	if timeoutResp != nil {
+		// The current ctx may be still in use by the handler.
+		// So create new one for passing to pendingResponses.
+		reqID := wi.reqID
+		wi = s.acquireWorkItem()
+		ctx = &wi.ctx
+		timeoutResp.CopyTo(&wi.ctx.Response)
+		wi.reqID = reqID
+	}
+
+	// Request is no longer needed, so reset it in order
+	// to free up resources occupied by the request.
+	ctx.Request.Reset()
+
+	pushPendingResponse(pendingResponses, wi, stopCh)
+}
+
+func pushPendingResponse(pendingResponses chan<- *serverWorkItem, wi *serverWorkItem, stopCh <-chan struct{}) bool {
+	select {
+	case pendingResponses <- wi:
+	default:
+		select {
+		case pendingResponses <- wi:
+		case <-stopCh:
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Server) connWriter(bw *bufio.Writer, conn net.Conn, pendingResponses <-chan *serverWorkItem, stopCh <-chan struct{}) error {

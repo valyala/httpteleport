@@ -10,70 +10,86 @@ import (
 )
 
 func BenchmarkEndToEndGetNoDelay1(b *testing.B) {
-	benchmarkEndToEndGet(b, 1, 0, CompressNone, false)
+	benchmarkEndToEndGet(b, 1, 0, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetNoDelay10(b *testing.B) {
-	benchmarkEndToEndGet(b, 10, 0, CompressNone, false)
+	benchmarkEndToEndGet(b, 10, 0, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetNoDelay100(b *testing.B) {
-	benchmarkEndToEndGet(b, 100, 0, CompressNone, false)
+	benchmarkEndToEndGet(b, 100, 0, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetNoDelay1000(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 0, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, 0, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetNoDelay10K(b *testing.B) {
-	benchmarkEndToEndGet(b, 10000, 0, CompressNone, false)
+	benchmarkEndToEndGet(b, 10000, 0, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetDelay1ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetDelay2ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, 2*time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetDelay4ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, 4*time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetDelay8ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, 8*time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetDelay16ms(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, 16*time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetCompressNone(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, false, false)
 }
 
 func BenchmarkEndToEndGetCompressFlate(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, false)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, false, false)
 }
 
 func BenchmarkEndToEndGetCompressSnappy(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, false)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, false, false)
 }
 
 func BenchmarkEndToEndGetTLSCompressNone(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, true)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressNone, true, false)
 }
 
 func BenchmarkEndToEndGetTLSCompressFlate(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, true)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressFlate, true, false)
 }
 
 func BenchmarkEndToEndGetTLSCompressSnappy(b *testing.B) {
-	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, true)
+	benchmarkEndToEndGet(b, 1000, time.Millisecond, CompressSnappy, true, false)
 }
 
-func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration, compressType CompressType, isTLS bool) {
+func BenchmarkEndToEndGetPipeline1(b *testing.B) {
+	benchmarkEndToEndGet(b, 1, 0, CompressNone, false, true)
+}
+
+func BenchmarkEndToEndGetPipeline10(b *testing.B) {
+	benchmarkEndToEndGet(b, 10, 0, CompressNone, false, true)
+}
+
+func BenchmarkEndToEndGetPipeline100(b *testing.B) {
+	benchmarkEndToEndGet(b, 100, 0, CompressNone, false, true)
+}
+
+func BenchmarkEndToEndGetPipeline1000(b *testing.B) {
+	benchmarkEndToEndGet(b, 1000, 0, CompressNone, false, true)
+}
+
+func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duration, compressType CompressType, isTLS, pipelineRequests bool) {
 	var tlsConfig *tls.Config
 	if isTLS {
 		tlsConfig = newTestServerTLSConfig()
@@ -90,10 +106,11 @@ func benchmarkEndToEndGet(b *testing.B, parallelism int, batchDelay time.Duratio
 		Handler: func(ctx *fasthttp.RequestCtx) {
 			ctx.SetBodyString(expectedBody)
 		},
-		Concurrency:   parallelism * runtime.NumCPU(),
-		MaxBatchDelay: serverBatchDelay,
-		CompressType:  compressType,
-		TLSConfig:     tlsConfig,
+		Concurrency:      parallelism * runtime.NumCPU(),
+		MaxBatchDelay:    serverBatchDelay,
+		CompressType:     compressType,
+		TLSConfig:        tlsConfig,
+		PipelineRequests: pipelineRequests,
 	}
 	serverStop, ln := newTestServerExt(s)
 
