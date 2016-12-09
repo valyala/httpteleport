@@ -5,6 +5,7 @@
 # httpteleport
 
 Teleports 10Gbps http traffic over 1Gbps networks.
+Built on top of [fastrpc](https://github.com/valyala/fastrpc).
 
 
 # Use cases
