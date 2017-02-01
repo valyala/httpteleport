@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/expvarhandler"
+	"io"
 	"log"
 	"net"
 	"sync/atomic"
@@ -112,7 +113,7 @@ func (c *expvarConn) Read(p []byte) (int, error) {
 	n, err := c.Conn.Read(p)
 	c.readCalls.Add(1)
 	c.bytesRead.Add(int64(n))
-	if err != nil {
+	if err != nil && err != io.EOF {
 		c.readError.Add(1)
 	}
 	return n, err
