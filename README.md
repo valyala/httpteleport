@@ -67,21 +67,28 @@ This resolves [head of line blocking](https://en.wikipedia.org/wiki/Head-of-line
      responses back to the client:
 
   ```
-$ GOMAXPROCS=1 go test -bench=. -benchmem -benchtime=10s
-BenchmarkEndToEndGetNoDelay1       	 3000000	      4635 ns/op	  56.30 MB/s	       0 B/op	       0 allocs/op
-BenchmarkEndToEndGetNoDelay10      	 3000000	      4630 ns/op	  56.37 MB/s	       0 B/op	       0 allocs/op
-BenchmarkEndToEndGetNoDelay100     	 3000000	      4657 ns/op	  56.04 MB/s	       0 B/op	       0 allocs/op
-BenchmarkEndToEndGetNoDelay1000    	 3000000	      4777 ns/op	  54.64 MB/s	       2 B/op	       0 allocs/op
-BenchmarkEndToEndGetNoDelay10K     	 2000000	      6613 ns/op	  39.46 MB/s	      26 B/op	       0 allocs/op
-BenchmarkEndToEndGetDelay1ms       	 3000000	      5822 ns/op	  44.82 MB/s	       2 B/op	       0 allocs/op
-BenchmarkEndToEndGetDelay2ms       	 2000000	      6677 ns/op	  39.09 MB/s	       3 B/op	       0 allocs/op
-BenchmarkEndToEndGetDelay4ms       	 2000000	      8820 ns/op	  29.59 MB/s	       3 B/op	       0 allocs/op
-BenchmarkEndToEndGetDelay8ms       	 1000000	     12978 ns/op	  20.11 MB/s	       6 B/op	       0 allocs/op
-BenchmarkEndToEndGetDelay16ms      	 1000000	     20461 ns/op	  12.76 MB/s	       6 B/op	       0 allocs/op
-BenchmarkEndToEndGetCompressNone   	 3000000	      5809 ns/op	  44.93 MB/s	       2 B/op	       0 allocs/op
-BenchmarkEndToEndGetCompressFlate  	 1000000	     10608 ns/op	  24.60 MB/s	      12 B/op	       0 allocs/op
-BenchmarkEndToEndGetCompressSnappy 	 2000000	      6252 ns/op	  41.75 MB/s	       3 B/op	       0 allocs/op
-BenchmarkEndToEndGetTLSCompressNone   	 2000000	      6152 ns/op	  42.42 MB/s	       3 B/op	       0 allocs/op
-BenchmarkEndToEndGetTLSCompressFlate  	 1000000	     10702 ns/op	  24.39 MB/s	      13 B/op	       0 allocs/op
-BenchmarkEndToEndGetTLSCompressSnappy 	 2000000	      6314 ns/op	  41.33 MB/s	       4 B/op	       0 allocs/op
+GOMAXPROCS=1 go test -bench=. -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/valyala/httpteleport
+BenchmarkEndToEndGetNoDelay1          	  300000	      4346 ns/op	  60.05 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEndToEndGetNoDelay10         	  300000	      4370 ns/op	  59.71 MB/s	       3 B/op	       0 allocs/op
+BenchmarkEndToEndGetNoDelay100        	  300000	      4406 ns/op	  59.23 MB/s	       6 B/op	       0 allocs/op
+BenchmarkEndToEndGetNoDelay1000       	  300000	      4457 ns/op	  58.55 MB/s	      24 B/op	       0 allocs/op
+BenchmarkEndToEndGetNoDelay10K        	  300000	      5868 ns/op	  44.48 MB/s	     178 B/op	       1 allocs/op
+BenchmarkEndToEndGetDelay1ms          	  300000	      4771 ns/op	  54.70 MB/s	      21 B/op	       0 allocs/op
+BenchmarkEndToEndGetDelay2ms          	  200000	      7943 ns/op	  32.86 MB/s	      31 B/op	       0 allocs/op
+BenchmarkEndToEndGetDelay4ms          	  200000	      7741 ns/op	  33.71 MB/s	      31 B/op	       0 allocs/op
+BenchmarkEndToEndGetDelay8ms          	  200000	     10580 ns/op	  24.67 MB/s	      26 B/op	       0 allocs/op
+BenchmarkEndToEndGetDelay16ms         	  100000	     16923 ns/op	  15.42 MB/s	      50 B/op	       0 allocs/op
+BenchmarkEndToEndGetCompressNone      	  200000	      7899 ns/op	  33.04 MB/s	      31 B/op	       0 allocs/op
+BenchmarkEndToEndGetCompressFlate     	  100000	     13257 ns/op	  19.69 MB/s	     129 B/op	       0 allocs/op
+BenchmarkEndToEndGetCompressSnappy    	  200000	      8158 ns/op	  31.99 MB/s	      40 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressNone   	  200000	      8692 ns/op	  30.02 MB/s	      39 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressFlate  	  100000	     13710 ns/op	  19.04 MB/s	     131 B/op	       0 allocs/op
+BenchmarkEndToEndGetTLSCompressSnappy 	  200000	      8480 ns/op	  30.78 MB/s	      42 B/op	       0 allocs/op
+BenchmarkEndToEndGetPipeline1         	  300000	      4673 ns/op	  55.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkEndToEndGetPipeline10        	  300000	      4610 ns/op	  56.61 MB/s	       3 B/op	       0 allocs/op
+BenchmarkEndToEndGetPipeline100       	  300000	      4576 ns/op	  57.03 MB/s	       6 B/op	       0 allocs/op
+BenchmarkEndToEndGetPipeline1000      	  300000	      4886 ns/op	  53.41 MB/s	      26 B/op	       0 allocs/op
 ```
