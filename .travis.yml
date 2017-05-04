@@ -12,4 +12,4 @@ script:
   - GOARCH=386 go build
 
   # run tests on a standard platform
-  - go test -v ./...
+  - go test -v
