@@ -1,7 +1,6 @@
 language: go
 
 go:
-  - 1.7
   - 1.8
 
 script:
@@ -12,4 +11,4 @@ script:
   - GOARCH=386 go build
 
   # run tests on a standard platform
-  - go test -v
+  - go test -v ./...
