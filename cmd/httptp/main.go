@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/tls"
 	"expvar"
@@ -9,14 +10,21 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/httpteleport"
 	"github.com/valyala/tcplisten"
+	"golang.org/x/crypto/acme/autocert"
 	"log"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
 
 var (
+	autocertCacheDir = flag.String("autocertCacheDir", "autocert-cache", "Path to directory where automatically generated "+
+		"TLS certificates are cached for -inType=https.\n"+
+		"\tThe certificates are generated using https://letsencrypt.org/")
+	autocertHostRegexp = flag.String("autocertHostRegexp", "^.*$", "TLS certificates are automatically generated only for hostnames "+
+		"matching the given regexp")
 	reusePort = flag.Bool("reusePort", false, "Whether to enable SO_REUSEPORT on -in if -inType is http or teleport")
 
 	in     = flag.String("in", "127.0.0.1:8080", "-inType address to listen to for incoming requests")
@@ -38,10 +46,12 @@ var (
 	inMaxBodySize   = flag.Int("inMaxBodySize", fasthttp.DefaultMaxRequestBodySize, "Maximum body size for -in requests")
 	inAllowIP       = flag.String("inAllowIP", "", "Comma-separated list of IP addresses allowed for establishing connections to -in.\n"+
 		"\tAll IP addresses are allowed if empty")
-	inTLSCert = flag.String("inTLSCert", "/etc/ssl/certs/ssl-cert-snakeoil.pem",
-		"Path to TLS certificate file if -inType=https or teleports")
-	inTLSKey = flag.String("inTLSKey", "/etc/ssl/private/ssl-cert-snakeoil.key",
-		"Path to TLS key file if -inType=https or teleports")
+	inTLSCert = flag.String("inTLSCert", "", "Comma-separated list of paths to TLS certificate files if -inType=https or teleports.\n"+
+		"\tCertificates for -inType=https are automatically generated using https://letsencrypt.org/ "+
+		"and cached at -autocertCacheDir if empty")
+	inTLSKey = flag.String("inTLSKey", "", "Comma-separated list of paths to TLS key files if -inType=https or teleports.\n"+
+		"\tKeys for -inType=https are automatically generated using https://letsencrypt.org/ "+
+		"and cached at -autocertCacheDir if empty")
 	inTLSSessionTicketKey = flag.String("inTLSSessionTicketKey", "", "TLS sesssion ticket key if -inType=https or teleports. "+
 		"Automatically generated if empty.\n"+
 		"\tSee https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details")
@@ -54,7 +64,7 @@ var (
 		"\tunix - forward requests to http servers on unix socket, e.g. -out=/var/nginx/sock.unix\n"+
 		"\tteleport - forward requests to httpteleport servers over TCP, e.g. -out=127.0.0.1:8043\n"+
 		"\ttepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043. "+
-		"Server must properly set -inTLS* flags in order to accept encrypted TCP connections")
+		"The server must properly set -inTLS* flags in order to accept encrypted TCP connections")
 	outDelay    = flag.Duration("outDelay", 0, "How long to wait before forwarding incoming requests to -out if -outType=teleport")
 	outCompress = flag.String("outCompress", "flate", "Which compression to use for requests if -outType=teleport.\n"+
 		"\tSupported values:\n"+
@@ -268,7 +278,7 @@ func serveHTTP() {
 
 func serveHTTPS() {
 	ln := newTCPListener()
-	tlsConfig := newInTLSConfig()
+	tlsConfig := newInTLSConfig(true)
 	lnTLS := tls.NewListener(ln, tlsConfig)
 	s := newHTTPServer()
 
@@ -311,7 +321,7 @@ func serveTeleportExt(isTLS bool) {
 	ln := newTCPListener()
 	var tlsConfig *tls.Config
 	if isTLS {
-		tlsConfig = newInTLSConfig()
+		tlsConfig = newInTLSConfig(false)
 	}
 	inCompressType := compressType(*inCompress, "inCompress")
 	s := httpteleport.Server{
@@ -422,17 +432,69 @@ func commonRequestHandler(proxyType string, ctx *fasthttp.RequestCtx) {
 
 var upstreamClients fasthttp.LBClient
 
-func newInTLSConfig() *tls.Config {
-	cert, err := tls.LoadX509KeyPair(*inTLSCert, *inTLSKey)
-	if err != nil {
-		log.Fatalf("cannot load TLS certificate from -inTLSCert=%q and -inTLSKey=%q: %s", *inTLSCert, *inTLSKey, err)
-	}
+func newInTLSConfig(allowAutocert bool) *tls.Config {
+	// See https://blog.gopheracademy.com/advent-2016/exposing-go-on-the-internet/
 	tlsConfig := &tls.Config{
-		Certificates:             []tls.Certificate{cert},
 		PreferServerCipherSuites: true,
+		CurvePreferences: []tls.CurveID{
+			tls.CurveP256,
+			tls.X25519, // Go 1.8 only
+		},
 	}
 	if len(*inTLSSessionTicketKey) > 0 {
 		tlsConfig.SessionTicketKey = sha256.Sum256([]byte(*inTLSSessionTicketKey))
 	}
+
+	var certs []tls.Certificate
+	if len(*inTLSCert) > 0 {
+		certFiles := strings.Split(*inTLSCert, ",")
+		keyFiles := strings.Split(*inTLSKey, ",")
+		if len(certFiles) != len(keyFiles) {
+			log.Fatalf("-inTLSCert and -inTLSKey sizes mismatch: %d vs %d. -inTLSCert=%q, -inTLSKey=%q",
+				len(certFiles), len(keyFiles), *inTLSCert, *inTLSKey)
+		}
+		for i := range certFiles {
+			certFile := certFiles[i]
+			keyFile := keyFiles[i]
+			cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+			if err != nil {
+				log.Fatalf("cannot load TLS certificate for cert=%q, key=%q, -inTLSCert=%q and -inTLSKey=%q",
+					certFile, keyFile, *inTLSCert, *inTLSKey, err)
+			}
+			certs = append(certs, cert)
+		}
+		tlsConfig.Certificates = certs
+		tlsConfig.BuildNameToCertificate()
+	}
+
+	if len(certs) > 0 {
+		return tlsConfig
+	}
+
+	if !allowAutocert {
+		log.Fatalf("missing -inTLSCert")
+	}
+
+	log.Printf("autocert mode on")
+	hostPolicyRegexp, err := regexp.Compile(*autocertHostRegexp)
+	if err != nil {
+		log.Fatalf("cannot compile -autocertHostRegexp=%q: %s", *autocertHostRegexp, err)
+	}
+	if err = os.MkdirAll(*autocertCacheDir, 0700); err != nil {
+		log.Fatalf("cannot create -autocertCacheDir=%q: %s", *autocertCacheDir, err)
+	}
+	log.Printf("caching TLS certs at -autocertCacheDir=%q for hostnames matching -autocertHostRegexp=%q",
+		*autocertCacheDir, *autocertHostRegexp)
+	m := autocert.Manager{
+		Prompt: autocert.AcceptTOS,
+		HostPolicy: func(_ context.Context, host string) error {
+			if hostPolicyRegexp.MatchString(host) {
+				return nil
+			}
+			return fmt.Errorf("host %q doesn't match autocertHostsRegexp %q", host, *autocertHostRegexp)
+		},
+		Cache: autocert.DirCache(*autocertCacheDir),
+	}
+	tlsConfig.GetCertificate = m.GetCertificate
 	return tlsConfig
 }

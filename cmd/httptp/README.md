@@ -45,6 +45,8 @@ Any highly loaded http-based API service and microservice may benefit from
     mode, [load balancer](https://en.wikipedia.org/wiki/Load_balancing_(computing)) mode and
     [TLS offloading](https://www.nginx.com/blog/nginx-ssl/) mode.
 
+  * Automatically generates and renews TLS certificates via [letsencrypt.org](https://letsencrypt.org/).
+
   * Automatically adjusts load to upstream servers:
 
     * Faster servers receive more requests.
@@ -282,9 +284,17 @@ The following command starts `httptp` accepting https requests at port 443
 and forwarding them unencrypted to the given `-out` worker nodes:
 
 ```
-httptp -inType=https -inTLSCert=/path/to/tls.cert -inTLSKey=/path/to/tls.key \
-	-in=:443 -outType=http -out=node1:8080,node2:8080,node3:8080
+httptp -inType=https -in=:443 -outType=http -out=node1:8080,node2:8080,node3:8080
 ```
+
+`httptp` automatically generates and renews TLS certificates for the requested
+hosts matching `-autocertHostRegexp` and caches them at the `-autocertCacheDir`.
+The certificates are generated using [letsencrypt.org](https://letsencrypt.org/).
+
+It is possible using already existing TLS certificates - just pass comma-separated
+list of certificate paths to `-inTLSCert` and the corresponding comma-separated
+list of key paths to `-inTLSKey`.
+
 
 ## Advanced usage
 
@@ -301,6 +311,11 @@ See `httptp -help` for more details:
 ```
 $ httptp -help
 Usage of ./httptp:
+  -autocertCacheDir string
+    	Path to directory where automatically generated TLS certificates are cached for -inType=https.
+	The certificates are generated using https://letsencrypt.org/ (default "autocert-cache")
+  -autocertHostRegexp string
+    	TLS certificates are automatically generated only for hostnames matching the given regexp (default "^.*$")
   -clientIPHeader string
     	HTTP request header for sending the original client ip.
 	For instance, -clientIPHeader=X-Forwarded-For. Empty -clientIPHeader disables sending client ip in request headers
@@ -332,9 +347,11 @@ Usage of ./httptp:
   -inMaxHeaderSize int
     	Maximum header size for -in requests (default 4096)
   -inTLSCert string
-    	Path to TLS certificate file if -inType=https or teleports (default "/etc/ssl/certs/ssl-cert-snakeoil.pem")
+    	Comma-separated list of paths to TLS certificate files if -inType=https or teleports.
+	Certificates for -inType=https are automatically generated using https://letsencrypt.org/ and cached at -autocertCacheDir if empty (default "")
   -inTLSKey string
-    	Path to TLS key file if -inType=https or teleports (default "/etc/ssl/private/ssl-cert-snakeoil.key")
+    	Comma-separated list of paths to TLS key files if -inType=https or teleports.
+	Keys for -inType=https are automatically generated using https://letsencrypt.org/ and cached at -autocertCacheDir if empty (default "")
   -inTLSSessionTicketKey string
     	TLS sesssion ticket key if -inType=https or teleports. Automatically generated if empty.
 	See https://blog.cloudflare.com/tls-session-resumption-full-speed-and-secure/ for details
@@ -373,7 +390,7 @@ Usage of ./httptp:
 	https - forward requests to https servers on TCP, e.g -out=127.0.0.1:443
 	unix - forward requests to http servers on unix socket, e.g. -out=/var/nginx/sock.unix
 	teleport - forward requests to httpteleport servers over TCP, e.g. -out=127.0.0.1:8043
-	tepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043. Server must properly set -inTLS* flags in order to accept encrypted TCP connections (default "teleport")
+	tepelorts - forward requests to httpteleport servers over encrypted TCP, e.g. -out=127.0.0.1:8043. The server must properly set -inTLS* flags in order to accept encrypted TCP connections (default "teleport")
   -reusePort
     	Whether to enable SO_REUSEPORT on -in if -inType is http or teleport
 ```
