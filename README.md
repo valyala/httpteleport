@@ -66,8 +66,8 @@ This resolves [head of line blocking](https://en.wikipedia.org/wiki/Head-of-line
      where a client sends requests to a local server and the server sends
      responses back to the client:
 
-  ```
-GOMAXPROCS=1 go test -bench=. -benchmem
+```
+$ GOMAXPROCS=1 go test -bench=. -benchmem
 goos: linux
 goarch: amd64
 pkg: github.com/valyala/httpteleport
